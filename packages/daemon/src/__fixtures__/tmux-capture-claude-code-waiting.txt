@@ -1,0 +1,4 @@
+
+Claude has finished analyzing the code.
+
+◆ Do you want to apply these changes? (y/n)

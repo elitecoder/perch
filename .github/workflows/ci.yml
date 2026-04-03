@@ -1,0 +1,41 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    name: Test
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v3
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Lint
+        run: pnpm lint || true   # non-blocking until eslint config is fully wired
+
+      - name: Test daemon
+        run: pnpm --filter daemon run test
+
+      - name: Test CLI
+        run: pnpm --filter cli run test
+
+      - name: Build daemon
+        run: pnpm --filter daemon run build
+
+      - name: Build CLI
+        run: pnpm --filter cli run build

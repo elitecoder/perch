@@ -1,0 +1,5 @@
+
+Last login: Wed Apr  2 10:00:00 on ttys001
+mukulsharma@mac ~ $ ls
+Desktop   Documents   Downloads   dev
+mukulsharma@mac ~ $

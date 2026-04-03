@@ -1,0 +1,16 @@
+{
+  "name": "perch",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "build": "pnpm -r run build",
+    "test": "pnpm -r run test",
+    "test:coverage": "pnpm -r run test:coverage",
+    "lint": "pnpm -r run lint",
+    "dev": "pnpm --filter daemon run dev",
+    "setup": "pnpm --filter cli run start setup"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.0"
+  }
+}
