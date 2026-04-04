@@ -11,7 +11,6 @@ Perch runs as a background daemon on your Mac, connecting your terminal multiple
 - **Preset plugins** — `claude` preset understands Claude Code's states (thinking, waiting, idle, error); `generic` works with anything
 - **Workspace management** — create/close sessions, split panes, rename, select
 - **macOS native** — runs as a LaunchAgent, restarts on login, credentials stored in Keychain
-- **Menubar app** — optional Swift menubar app for setup and status
 
 ## Quick Start
 
@@ -87,7 +86,7 @@ The first `watch` auto-saves the detected preset as the global default. Override
 packages/
   cli/        # CLI tool (perch setup, status, restart, logs, uninstall)
   daemon/     # Background daemon (Slack socket mode, terminal adapters, watcher)
-  menubar/    # macOS menubar app (Swift)
+  shared/     # Shared config types and utilities
 slack/        # Slack app manifest
 launchd/      # LaunchAgent plist template
 ```
