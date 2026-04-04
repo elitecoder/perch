@@ -44,33 +44,13 @@ It's designed to be:
 
 > **Talk to Claude Code from Slack — on any device.**
 
-```
-You (Slack):  list
-Perch:        cmux:dev:1:main:5  [claude-code]  (idle)
-              cmux:dev:1:main:6  [shell]
+**Send commands, watch sessions, and interact with Claude Code — all from Slack:**
 
-You (Slack):  watch 5
-Perch:        Watching cmux:dev:1:main:5 with preset "claude"
+![Perch in action — list workspaces, watch panes, send commands](assets/demo-list.png)
 
-You (Slack):  send 5 fix the flaky test in auth.test.ts
-Perch:        ⏎ sent to cmux:dev:1:main:5
+**Read terminal output directly in Slack:**
 
-              ┌─ Live Watch ──────────────────────────┐
-              │ State: 🤔 thinking                     │
-              │                                        │
-              │ Claude is reading auth.test.ts...       │
-              │ Found race condition in beforeEach...   │
-              └────────────────────────────────────────┘
-
-              ┌─ Live Watch ──────────────────────────┐
-              │ State: ⏳ waiting (for approval)       │
-              │                                        │
-              │ Ready to apply fix — approve?           │
-              └────────────────────────────────────────┘
-
-You (Slack):  accept
-Perch:        ⏎ sent to cmux:dev:1:main:5
-```
+![Reading Claude Code's output through Slack](assets/demo-read.png)
 
 The watch message **edits in place** — no message flood, just one updating thread.
 
