@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What is Perch
 
-Perch is a macOS background daemon that remote-controls terminal multiplexer sessions (cmux, tmux, Zellij, GNU Screen) from Slack. Users send commands like `list`, `read 4`, `send 4 echo hi`, `watch 4` in a Slack channel; the daemon executes them against the terminal and posts results back. Watch mode edits a single Slack thread message in-place for live updates with state detection (thinking/waiting/idle/error for Claude Code).
+Perch is a macOS background daemon that remote-controls terminal multiplexer sessions (cmux, tmux, Zellij) from Slack. Users send commands like `list`, `read 4`, `send 4 echo hi`, `watch 4` in a Slack channel; the daemon executes them against the terminal and posts results back. Watch mode edits a single Slack thread message in-place for live updates with state detection (thinking/waiting/idle/error for Claude Code).
 
 ## Commands
 
@@ -67,6 +67,7 @@ Always run all unit tests and E2E tests before committing and pushing:
 pnpm test                                                        # unit tests
 pnpm --filter daemon exec npx vitest run src/e2e-tmux.test.ts    # tmux E2E
 pnpm --filter daemon exec npx vitest run src/e2e-cmux.test.ts    # cmux E2E (requires cmux with Automation Mode)
+pnpm --filter daemon exec npx vitest run src/e2e-zellij.test.ts  # zellij E2E
 ```
 
 ## Key conventions

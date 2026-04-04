@@ -37,7 +37,6 @@ First public release.
 - tmux
 - cmux (detected via app bundle path when not in PATH)
 - Zellij
-- GNU Screen
 
 ### Architecture
 

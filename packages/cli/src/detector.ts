@@ -11,7 +11,6 @@ const MULTIPLEXERS: MultiplexerInfo[] = [
   { id: 'tmux', displayName: 'tmux', command: 'tmux' },
   { id: 'zellij', displayName: 'Zellij', command: 'zellij' },
   { id: 'cmux', displayName: 'cmux', command: 'cmux' },
-  { id: 'screen', displayName: 'GNU Screen', command: 'screen' },
 ]
 
 const FALLBACK_PATHS: Record<string, string[]> = {
@@ -44,7 +43,6 @@ export function installInstructions(id: string): string {
   const instructions: Record<string, string> = {
     tmux: 'brew install tmux',
     zellij: 'brew install zellij',
-    screen: 'brew install screen',
   }
   return instructions[id] ?? `Install ${id} via your package manager`
 }

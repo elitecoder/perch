@@ -22,7 +22,7 @@ const DEFAULTS: PerchConfig = {
   slackChannelId: '',
   pollIntervalMs: 2000,
   maxScreenLines: 50,
-  adapterPriority: ['tmux', 'zellij', 'cmux', 'screen'],
+  adapterPriority: ['tmux', 'zellij', 'cmux'],
   userPluginsDir: join(CONFIG_DIR, 'plugins'),
   panePresets: {},
 }

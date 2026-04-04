@@ -7,7 +7,7 @@
 
 Send a Slack message. Control your terminal. Watch Claude Code think in real time.
 
-Perch is a macOS daemon that bridges Slack and your terminal multiplexer — tmux, cmux, Zellij, or GNU Screen.
+Perch is a macOS daemon that bridges Slack and your terminal multiplexer — tmux, cmux, or Zellij.
 List sessions, read output, send commands, and **watch panes live** — all from your phone, tablet, or any device with Slack.
 
 *No SSH tunnels. No port forwarding. No VPN. Just Slack.*
@@ -163,7 +163,6 @@ launchd/      LaunchAgent plist template
 | **tmux** | `which tmux` |
 | **cmux** | App bundle or `which cmux` |
 | **Zellij** | `which zellij` |
-| **GNU Screen** | `which screen` |
 
 ## Install / Update / Uninstall
 
@@ -184,7 +183,7 @@ Requires Node.js 20+. Installs to `~/.perch`, links `perch` globally.
   "slackChannelId": "C...",
   "pollIntervalMs": 2000,
   "maxScreenLines": 50,
-  "adapterPriority": ["cmux", "tmux", "zellij", "screen"],
+  "adapterPriority": ["cmux", "tmux", "zellij"],
   "defaultPreset": "claude",
   "panePresets": {}
 }
