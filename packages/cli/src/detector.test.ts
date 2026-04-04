@@ -5,6 +5,10 @@ vi.mock('execa', () => ({
   execa: vi.fn(),
 }))
 
+vi.mock('fs/promises', () => ({
+  access: vi.fn().mockRejectedValue(new Error('ENOENT')),
+}))
+
 import { execa } from 'execa'
 const mockExeca = vi.mocked(execa)
 
@@ -38,6 +42,20 @@ describe('detectMultiplexers', () => {
     const found = await detectMultiplexers()
     expect(found[0]?.id).toBe('tmux')
     expect(found[1]?.id).toBe('zellij')
+  })
+
+  it('detects cmux via fallback path when not in PATH', async () => {
+    const { access } = await import('fs/promises')
+    const mockAccess = vi.mocked(access)
+
+    mockExeca.mockRejectedValue(new Error('not found') as never)
+    mockAccess.mockImplementation((path) => {
+      if (String(path).includes('cmux')) return Promise.resolve(undefined) as never
+      return Promise.reject(new Error('ENOENT')) as never
+    })
+
+    const found = await detectMultiplexers()
+    expect(found.map(m => m.id)).toEqual(['cmux'])
   })
 })
 

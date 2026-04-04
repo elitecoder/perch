@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { WatcherManager } from './manager.js'
 import type { ITerminalAdapter } from '../adapters/interface.js'
 import type { IToolPlugin } from '../plugins/interface.js'
+import type { LiveView } from '../slack/poster.js'
 
 function makeAdapter(content = 'screen content'): ITerminalAdapter {
   return {
@@ -36,6 +37,13 @@ function makePlugin(): IToolPlugin {
   } as unknown as IToolPlugin
 }
 
+function makeLiveView() {
+  return {
+    update: vi.fn().mockResolvedValue(undefined),
+    transition: vi.fn().mockResolvedValue(undefined),
+  } as unknown as LiveView
+}
+
 describe('WatcherManager', () => {
   let manager: WatcherManager
 
@@ -51,20 +59,21 @@ describe('WatcherManager', () => {
 
   describe('watch / unwatch / listWatches', () => {
     it('adds a pane to the watch list', () => {
-      manager.watch('pane:1', makeAdapter(), makePlugin(), vi.fn())
+      manager.watch('pane:1', makeAdapter(), makePlugin(), makeLiveView())
       expect(manager.listWatches()).toContain('pane:1')
     })
 
     it('is idempotent — duplicate watch does not double-register', () => {
       const adapter = makeAdapter()
       const plugin = makePlugin()
-      manager.watch('pane:1', adapter, plugin, vi.fn())
-      manager.watch('pane:1', adapter, plugin, vi.fn())
+      const liveView = makeLiveView()
+      manager.watch('pane:1', adapter, plugin, liveView)
+      manager.watch('pane:1', adapter, plugin, liveView)
       expect(manager.listWatches()).toHaveLength(1)
     })
 
     it('removes a pane on unwatch', () => {
-      manager.watch('pane:1', makeAdapter(), makePlugin(), vi.fn())
+      manager.watch('pane:1', makeAdapter(), makePlugin(), makeLiveView())
       manager.unwatch('pane:1')
       expect(manager.listWatches()).not.toContain('pane:1')
     })
@@ -74,16 +83,16 @@ describe('WatcherManager', () => {
     })
 
     it('tracks multiple watches independently', () => {
-      manager.watch('pane:1', makeAdapter(), makePlugin(), vi.fn())
-      manager.watch('pane:2', makeAdapter(), makePlugin(), vi.fn())
+      manager.watch('pane:1', makeAdapter(), makePlugin(), makeLiveView())
+      manager.watch('pane:2', makeAdapter(), makePlugin(), makeLiveView())
       expect(manager.listWatches()).toHaveLength(2)
     })
   })
 
   describe('dispose', () => {
     it('clears all watches', () => {
-      manager.watch('pane:1', makeAdapter(), makePlugin(), vi.fn())
-      manager.watch('pane:2', makeAdapter(), makePlugin(), vi.fn())
+      manager.watch('pane:1', makeAdapter(), makePlugin(), makeLiveView())
+      manager.watch('pane:2', makeAdapter(), makePlugin(), makeLiveView())
       manager.dispose()
       expect(manager.listWatches()).toHaveLength(0)
     })
@@ -100,11 +109,11 @@ describe('WatcherManager', () => {
         content: 'new content',
       })
 
-      const postFn = vi.fn().mockResolvedValue(undefined)
-      manager.watch('pane:1', adapter, plugin, postFn)
+      const liveView = makeLiveView()
+      manager.watch('pane:1', adapter, plugin, liveView)
 
       await vi.advanceTimersByTimeAsync(POLL)
-      expect(postFn).toHaveBeenCalledWith('new content')
+      expect(liveView.update).toHaveBeenCalledWith('new content')
     })
 
     it('does not post when computeDelta returns null and no transition', async () => {
@@ -112,30 +121,29 @@ describe('WatcherManager', () => {
       const plugin = makePlugin()
       vi.mocked(plugin.computeDelta).mockReturnValue(null)
 
-      const postFn = vi.fn().mockResolvedValue(undefined)
-      manager.watch('pane:1', adapter, plugin, postFn)
+      const liveView = makeLiveView()
+      manager.watch('pane:1', adapter, plugin, liveView)
 
       await vi.advanceTimersByTimeAsync(POLL)
-      expect(postFn).not.toHaveBeenCalled()
+      expect(liveView.update).not.toHaveBeenCalled()
     })
 
     it('posts state transition message when transition is in notifyOnTransitions', async () => {
       const adapter = makeAdapter('◆ waiting prompt')
       const plugin = makePlugin()
-      // First tick: thinking (idle→thinking, not in list); second tick: waiting (thinking→waiting, IS in list)
       vi.mocked(plugin.parseState)
         .mockReturnValueOnce('thinking')
         .mockReturnValueOnce('waiting')
       vi.mocked(plugin.computeDelta).mockReturnValue(null)
       vi.mocked(plugin.extractResponse).mockReturnValue('◆ waiting prompt')
 
-      const postFn = vi.fn().mockResolvedValue(undefined)
-      manager.watch('pane:1', adapter, plugin, postFn)
+      const liveView = makeLiveView()
+      manager.watch('pane:1', adapter, plugin, liveView)
 
       await vi.advanceTimersByTimeAsync(POLL)     // first tick: idle→thinking
       await vi.advanceTimersByTimeAsync(POLL)     // second tick: thinking→waiting
 
-      const calls = postFn.mock.calls.map(c => c[0] as string)
+      const calls = vi.mocked(liveView.update).mock.calls.map(c => c[0] as string)
       const transitionMsg = calls.find(m => m.includes('thinking') && m.includes('waiting'))
       expect(transitionMsg).toBeTruthy()
     })
@@ -143,11 +151,30 @@ describe('WatcherManager', () => {
     it('handles readPane errors gracefully without crashing', async () => {
       const adapter = makeAdapter()
       vi.mocked(adapter.readPane).mockRejectedValue(new Error('tmux gone'))
-      const postFn = vi.fn()
+      const liveView = makeLiveView()
 
-      manager.watch('pane:1', adapter, makePlugin(), postFn)
+      manager.watch('pane:1', adapter, makePlugin(), liveView)
       await vi.advanceTimersByTimeAsync(POLL)
-      expect(postFn).not.toHaveBeenCalled()
+      expect(liveView.update).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('getByThread', () => {
+    it('returns entry by thread timestamp', () => {
+      manager.watch('pane:1', makeAdapter(), makePlugin(), makeLiveView(), 'thread-ts-1')
+      const entry = manager.getByThread('thread-ts-1')
+      expect(entry).toBeDefined()
+      expect(entry!.paneId).toBe('pane:1')
+    })
+
+    it('returns undefined for unknown thread', () => {
+      expect(manager.getByThread('unknown')).toBeUndefined()
+    })
+
+    it('cleans up thread mapping on unwatch', () => {
+      manager.watch('pane:1', makeAdapter(), makePlugin(), makeLiveView(), 'thread-ts-1')
+      manager.unwatch('pane:1')
+      expect(manager.getByThread('thread-ts-1')).toBeUndefined()
     })
   })
 })

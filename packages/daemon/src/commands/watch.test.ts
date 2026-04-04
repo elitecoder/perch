@@ -3,7 +3,7 @@ import { makeWatchHandlers } from './watch.js'
 import type { ITerminalAdapter } from '../adapters/interface.js'
 import type { IToolPlugin } from '../plugins/interface.js'
 import type { WatcherManager } from '../watcher/manager.js'
-import type { Poster } from '../slack/poster.js'
+import type { Poster, LiveView } from '../slack/poster.js'
 
 function makeDeps() {
   const adapter: ITerminalAdapter = {
@@ -31,20 +31,27 @@ function makeDeps() {
     watch: { pollIntervalMs: 2000, notifyOnTransitions: [], suppressPatterns: [] },
   } as unknown as IToolPlugin
 
+  const mockLiveView = {
+    update: vi.fn().mockResolvedValue(undefined),
+    transition: vi.fn().mockResolvedValue(undefined),
+  } as unknown as LiveView
+
   const watcher: WatcherManager = {
     watch: vi.fn(),
     unwatch: vi.fn(),
     listWatches: vi.fn().mockReturnValue([]),
     dispose: vi.fn(),
+    getByThread: vi.fn(),
   } as unknown as WatcherManager
 
   const poster: Poster = {
     post: vi.fn().mockResolvedValue({ ts: '12345.678' }),
     postToThread: vi.fn(),
     makeThreadPostFn: vi.fn().mockReturnValue(vi.fn()),
+    makeLiveView: vi.fn().mockReturnValue(mockLiveView),
   } as unknown as Poster
 
-  return { adapter, plugin, watcher, poster }
+  return { adapter, plugin, watcher, poster, mockLiveView }
 }
 
 describe('watch command handlers', () => {
@@ -64,21 +71,22 @@ describe('watch command handlers', () => {
       expect(respond).toHaveBeenCalledWith(expect.stringContaining('Usage'))
     })
 
-    it('responds already watching when pane is already watched', async () => {
+    it('re-watches a pane that is already watched (unwatches first)', async () => {
       vi.mocked(deps.watcher.listWatches).mockReturnValue(['%0'])
       await handlers.watch(['%0'], respond)
-      expect(respond).toHaveBeenCalledWith(expect.stringContaining('Already watching'))
+      expect(deps.watcher.unwatch).toHaveBeenCalledWith('%0')
+      expect(deps.poster.post).toHaveBeenCalledWith(expect.stringContaining('Watching'))
     })
 
     it('starts watching and posts thread header', async () => {
       await handlers.watch(['%0'], respond)
       expect(deps.poster.post).toHaveBeenCalledWith(expect.stringContaining('Watching'))
-      expect(deps.watcher.watch).toHaveBeenCalledWith('%0', deps.adapter, deps.plugin, expect.any(Function))
+      expect(deps.watcher.watch).toHaveBeenCalledWith('%0', deps.adapter, deps.plugin, deps.mockLiveView, '12345.678')
     })
 
     it('respects --preset flag', async () => {
       const claudePlugin: IToolPlugin = {
-        id: 'claude-code',
+        id: 'claude',
         displayName: 'Claude Code',
         detect: vi.fn().mockReturnValue(false),
         parseState: vi.fn().mockReturnValue('idle'),
@@ -88,8 +96,8 @@ describe('watch command handlers', () => {
         watch: { pollIntervalMs: 1500, notifyOnTransitions: [], suppressPatterns: [] },
       } as unknown as IToolPlugin
       const h = makeWatchHandlers(deps.adapter, [claudePlugin, deps.plugin], deps.watcher, deps.poster)
-      await h.watch(['%0', '--preset', 'claude-code'], respond)
-      expect(deps.watcher.watch).toHaveBeenCalledWith('%0', deps.adapter, claudePlugin, expect.any(Function))
+      await h.watch(['%0', '--preset', 'claude'], respond)
+      expect(deps.watcher.watch).toHaveBeenCalledWith('%0', deps.adapter, claudePlugin, deps.mockLiveView, '12345.678')
     })
   })
 
