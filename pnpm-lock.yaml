@@ -7,28 +7,6 @@ settings:
 importers:
 
   .:
-    dependencies:
-      '@inquirer/prompts':
-        specifier: ^5.0.0
-        version: 5.5.0
-      '@slack/bolt':
-        specifier: ^3.21.0
-        version: 3.22.0
-      '@slack/web-api':
-        specifier: ^7.0.0
-        version: 7.15.0
-      chalk:
-        specifier: ^5.3.0
-        version: 5.6.2
-      execa:
-        specifier: ^9.3.0
-        version: 9.6.1
-      keytar:
-        specifier: ^7.9.0
-        version: 7.9.0
-      ora:
-        specifier: ^8.0.0
-        version: 8.2.0
     devDependencies:
       typescript:
         specifier: ^5.4.0

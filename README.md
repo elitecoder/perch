@@ -12,14 +12,35 @@ Perch runs as a background daemon on your Mac, connecting your terminal multiple
 - **Workspace management** — create/close sessions, split panes, rename, select
 - **macOS native** — runs as a LaunchAgent, restarts on login, credentials stored in Keychain
 
-## Quick Start
+## Install
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/elitecoder/perch/main/scripts/install.sh | bash
+```
+
+This installs Perch to `~/.perch`, builds it, and links the `perch` command globally. Requires Node.js 20+.
+
+To update:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/elitecoder/perch/main/scripts/install.sh | bash
+```
+
+Same command — it pulls the latest changes if already installed.
+
+To uninstall:
+
+```bash
+perch uninstall
+```
+
+## Setup
+
+```bash
 perch setup
 ```
 
-Setup walks you through:
+This walks you through:
 1. Detecting your terminal multiplexer
 2. Creating a Slack app (manifest provided)
 3. Collecting and validating tokens (stored in Keychain)
@@ -87,6 +108,7 @@ packages/
   cli/        # CLI tool (perch setup, status, restart, logs, uninstall)
   daemon/     # Background daemon (Slack socket mode, terminal adapters, watcher)
   shared/     # Shared config types and utilities
+scripts/      # Install script
 slack/        # Slack app manifest
 launchd/      # LaunchAgent plist template
 ```
