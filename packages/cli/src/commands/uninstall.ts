@@ -1,10 +1,13 @@
 import { confirm } from '@inquirer/prompts'
-import { execa } from 'execa'
 import { uninstall } from '../launchagent.js'
 import { clearAllSecrets } from '../keychain.js'
 import { ui } from '../ui.js'
 import { rmSync, existsSync } from 'fs'
+import { homedir } from 'os'
+import { join } from 'path'
 import { CONFIG_DIR } from '@perch-dev/shared/config'
+
+const INSTALL_DIR = join(homedir(), '.perch')
 
 export async function runUninstall(): Promise<void> {
   const proceed = await confirm({ message: 'This will completely remove Perch. Continue?' })
@@ -25,12 +28,11 @@ export async function runUninstall(): Promise<void> {
     ui.success('Config directory removed')
   }
 
-  ui.success('Removing perch CLI...')
-  ui.info('Run: npm uninstall --global perch')
-  await execa('npm', ['uninstall', '--global', 'perch']).catch(() => {
-    // may fail if installed via pnpm or yarn
-    ui.warn('Could not auto-remove. Run manually: npm uninstall --global perch')
-  })
+  if (existsSync(INSTALL_DIR)) {
+    rmSync(INSTALL_DIR, { recursive: true, force: true })
+    ui.success('Install directory removed')
+  }
 
   ui.success('Perch uninstalled.')
+  ui.info('The `perch` command will no longer be available after this shell session.')
 }
