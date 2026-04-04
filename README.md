@@ -115,4 +115,4 @@ Config lives at `~/.config/perch/config.json`:
 
 ## License
 
-Private
+Apache 2.0
