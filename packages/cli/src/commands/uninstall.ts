@@ -1,8 +1,9 @@
 import { confirm } from '@inquirer/prompts'
+import { execa } from 'execa'
 import { uninstall } from '../launchagent.js'
 import { clearAllSecrets } from '../keychain.js'
 import { ui } from '../ui.js'
-import { rmSync, existsSync } from 'fs'
+import { rmSync, existsSync, unlinkSync } from 'fs'
 import { homedir } from 'os'
 import { join } from 'path'
 import { CONFIG_DIR } from '@perch-dev/shared/config'
@@ -33,6 +34,17 @@ export async function runUninstall(): Promise<void> {
     ui.success('Install directory removed')
   }
 
+  // Remove the global `perch` binary
+  try {
+    const { stdout } = await execa('which', ['perch'])
+    const binPath = stdout.trim()
+    if (binPath) {
+      unlinkSync(binPath)
+      ui.success(`Removed ${binPath}`)
+    }
+  } catch {
+    // already gone
+  }
+
   ui.success('Perch uninstalled.')
-  ui.info('The `perch` command will no longer be available after this shell session.')
 }
