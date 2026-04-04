@@ -30,8 +30,7 @@ export function makeWatchHandlers(
       return
     }
     if (watcher.listWatches().includes(paneId)) {
-      await respond(`Already watching \`${paneId}\`.`)
-      return
+      watcher.unwatch(paneId)
     }
 
     const presetIdx = args.indexOf('--preset')

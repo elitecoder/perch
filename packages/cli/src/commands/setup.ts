@@ -127,9 +127,15 @@ export async function runSetup(): Promise<void> {
 
   // Step 4: Channel setup
   ui.step(4, 'Channel setup')
+  const existingChannel = readConfig().slackChannelId
   let channelId = ''
   while (true) {
-    channelId = await input({ message: 'Paste the Slack Channel ID where Perch should listen:' })
+    const prompt = existingChannel
+      ? `Slack Channel ID (Enter to keep ${existingChannel}):`
+      : 'Paste the Slack Channel ID where Perch should listen:'
+    const raw = await input({ message: prompt })
+    channelId = raw.trim() || existingChannel
+    if (!channelId) { ui.error('Channel ID is required.'); continue }
     const spinner = ui.spinner('Testing channel access...').start()
     const result = await validateChannel(botToken, channelId)
     if (result.ok) { spinner.succeed('Channel access confirmed'); break }
