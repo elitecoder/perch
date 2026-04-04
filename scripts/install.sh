@@ -51,6 +51,17 @@ else
   pnpm --filter cli link --global 2>/dev/null || npm link
 fi
 
+# Restart daemon if already running
+PLIST="$HOME/Library/LaunchAgents/dev.perch.plist"
+if [ -f "$PLIST" ]; then
+  info "Restarting daemon..."
+  launchctl unload "$PLIST" 2>/dev/null || true
+  launchctl load "$PLIST"
+  ok "Daemon restarted"
+fi
+
 echo ""
 ok "Perch installed successfully!"
-info "Run 'perch setup' to get started."
+if [ ! -f "$PLIST" ]; then
+  info "Run 'perch setup' to get started."
+fi
