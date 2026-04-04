@@ -91,6 +91,7 @@ export class ClaudeCodePlugin implements IToolPlugin {
     accept: 'y',
     reject: 'n',
     interrupt: 'C-c',
+    expand: 'C-o',
     esc: 'Escape',
     escape: 'Escape',
     confirm: 'Enter',

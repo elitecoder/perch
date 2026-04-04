@@ -106,7 +106,7 @@ export function createSocketApp(opts: SocketAppOptions): { app: App; poster: Pos
     }
 
     const respond = async (replyText: string) => {
-      await say({ text: replyText })
+      await say({ text: replyText, thread_ts: threadTs })
     }
     await router.dispatch(cleaned, respond)
   }

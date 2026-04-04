@@ -17,16 +17,23 @@ function cmux(args: string[]) {
   })
 }
 
-// Key aliases that cmux send understands
+// Map from plugin key names to cmux send-key names
 const KEY_MAP: Record<string, string> = {
-  'Enter': '\\n',
-  'Tab':   '\\t',
-  'C-c':   '\\x03',
-  'Escape': '\\x1b',
+  'Enter': 'enter',
+  'Tab':   'tab',
+  'C-c':   'ctrl+c',
+  'C-d':   'ctrl+d',
+  'C-o':   'ctrl+o',
+  'Escape': 'escape',
+  'Up':    'up',
+  'Down':  'down',
+  'Left':  'left',
+  'Right': 'right',
+  'Space': 'space',
 }
 
-function toSendArg(key: string): string {
-  return KEY_MAP[key] ?? key
+function toSendKeyArg(key: string): string {
+  return KEY_MAP[key] ?? key.toLowerCase()
 }
 
 export class CmuxAdapter implements ITerminalAdapter {
@@ -105,7 +112,7 @@ export class CmuxAdapter implements ITerminalAdapter {
 
   async sendKey(paneId: string, key: string): Promise<void> {
     const { surface } = this._parsePaneId(paneId)
-    await cmux(['send', '--surface', surface, toSendArg(key)])
+    await cmux(['send-key', '--surface', surface, toSendKeyArg(key)])
   }
 
   async createSession(name: string, cwd?: string, command?: string): Promise<Session> {

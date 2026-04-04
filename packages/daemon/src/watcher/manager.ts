@@ -78,7 +78,8 @@ export class WatcherManager {
     let raw: string
     try {
       raw = await entry.adapter.readPane(paneId)
-    } catch {
+    } catch (err) {
+      console.error(`[tick] readPane error for ${paneId}:`, err)
       return // transient read error; try again next tick
     }
 
@@ -87,6 +88,8 @@ export class WatcherManager {
     const transition = entry.stateMachine.update(newState)
     const delta = entry.plugin.computeDelta(entry.prevContent, clean)
 
+    console.log(`[tick] pane=${paneId} state=${newState} transition=${transition ? `${transition.from}→${transition.to}` : 'none'} delta=${delta ? delta.type : 'null'} prevLen=${entry.prevContent.length} cleanLen=${clean.length}`)
+
     entry.prevContent = clean
 
     const shouldNotifyTransition =
@@ -94,10 +97,14 @@ export class WatcherManager {
       StateMachine.shouldNotify(transition, entry.plugin.watch.notifyOnTransitions)
 
     if (shouldNotifyTransition) {
+      console.log(`[tick] posting transition: ${transition.from}→${transition.to}`)
       const msg = `*State:* ${transition.from} → ${transition.to}\n${clean}`.trim()
       await entry.liveView.update(msg)
     } else if (delta !== null) {
+      console.log(`[tick] posting delta (${delta.type}): ${delta.content.slice(0, 100)}...`)
       await entry.liveView.update(delta.content)
+    } else {
+      console.log(`[tick] skipped — no transition, no delta`)
     }
   }
 }
