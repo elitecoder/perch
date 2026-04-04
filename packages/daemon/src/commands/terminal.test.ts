@@ -6,7 +6,7 @@ function makeAdapter(): ITerminalAdapter {
   return {
     name: 'mock',
     isAvailable: vi.fn(),
-    listSessions: vi.fn(),
+    listSessions: vi.fn().mockResolvedValue([]),
     readPane: vi.fn().mockResolvedValue('pane output'),
     sendText: vi.fn().mockResolvedValue(undefined),
     sendKey: vi.fn().mockResolvedValue(undefined),

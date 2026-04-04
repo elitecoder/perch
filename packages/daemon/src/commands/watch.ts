@@ -10,6 +10,7 @@ export function makeWatchHandlers(
   plugins: IToolPlugin[],
   watcher: WatcherManager,
   poster: Poster,
+  resolvePane: (input: string) => Promise<string>,
 ): Record<string, CommandHandler> {
   function findPlugin(id: string): IToolPlugin | undefined {
     return plugins.find(p => p.id === id)
@@ -24,11 +25,11 @@ export function makeWatchHandlers(
   }
 
   const watch: CommandHandler = async (args, respond) => {
-    const paneId = args[0]
-    if (!paneId) {
+    if (!args[0]) {
       await respond('Usage: `watch <pane> [--preset <plugin-id>]`')
       return
     }
+    const paneId = await resolvePane(args[0])
     if (watcher.listWatches().includes(paneId)) {
       watcher.unwatch(paneId)
     }
@@ -63,11 +64,11 @@ export function makeWatchHandlers(
   }
 
   const unwatch: CommandHandler = async (args, respond) => {
-    const paneId = args[0]
-    if (!paneId) {
+    if (!args[0]) {
       await respond('Usage: `unwatch <pane>`')
       return
     }
+    const paneId = await resolvePane(args[0])
     watcher.unwatch(paneId)
     const state = readState()
     writeState({ ...state, watches: state.watches.filter(id => id !== paneId) })

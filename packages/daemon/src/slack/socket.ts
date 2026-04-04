@@ -36,7 +36,7 @@ export function createSocketApp(opts: SocketAppOptions): { app: App; poster: Pos
   // Register all command handlers
   const terminalHandlers = makeTerminalHandlers(adapter)
   const workspaceHandlers = makeWorkspaceHandlers(adapter)
-  const watchHandlers = makeWatchHandlers(adapter, plugins, watcher, poster)
+  const watchHandlers = makeWatchHandlers(adapter, plugins, watcher, poster, terminalHandlers.resolvePane)
   const systemHandlers = makeSystemHandlers(adapter, plugins, watcher, startedAt)
 
   for (const [name, handler] of Object.entries({

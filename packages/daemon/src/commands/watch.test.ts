@@ -61,7 +61,7 @@ describe('watch command handlers', () => {
 
   beforeEach(() => {
     deps = makeDeps()
-    handlers = makeWatchHandlers(deps.adapter, [deps.plugin], deps.watcher, deps.poster)
+    handlers = makeWatchHandlers(deps.adapter, [deps.plugin], deps.watcher, deps.poster, async (id) => id)
     respond = vi.fn().mockResolvedValue(undefined)
   })
 
@@ -95,7 +95,7 @@ describe('watch command handlers', () => {
         keyAliases: {},
         watch: { pollIntervalMs: 1500, notifyOnTransitions: [], suppressPatterns: [] },
       } as unknown as IToolPlugin
-      const h = makeWatchHandlers(deps.adapter, [claudePlugin, deps.plugin], deps.watcher, deps.poster)
+      const h = makeWatchHandlers(deps.adapter, [claudePlugin, deps.plugin], deps.watcher, deps.poster, async (id) => id)
       await h.watch(['%0', '--preset', 'claude'], respond)
       expect(deps.watcher.watch).toHaveBeenCalledWith('%0', deps.adapter, claudePlugin, deps.mockLiveView, '12345.678')
     })
