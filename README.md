@@ -44,13 +44,13 @@ It's designed to be:
 
 > **Talk to Claude Code from Slack — on any device.**
 
-**Send commands, watch sessions, and interact with Claude Code — all from Slack:**
+**List sessions, watch with Claude Code preset, and send commands — all from Slack:**
 
-![Perch in action — list workspaces, watch panes, send commands](assets/demo-list.png)
+![Perch listing workspaces and watching a pane with Claude Code preset](assets/demo-list.png)
 
-**Read terminal output directly in Slack:**
+**Send tasks to Claude Code remotely and watch the response live:**
 
-![Reading Claude Code's output through Slack](assets/demo-read.png)
+![Full Perch flow — watch, send, live updates, unwatch](assets/demo-flow.png)
 
 The watch message **edits in place** — no message flood, just one updating thread.
 
