@@ -98,8 +98,10 @@ export function createSocketApp(opts: SocketAppOptions): { app: App; poster: Pos
         const keyAlias = entry.plugin.keyAliases[lower]
         if (keyAlias) {
           await adapter.sendKey(entry.paneId, keyAlias)
+          await say({ text: `Sent \`${lower}\`` })
         } else {
           await adapter.sendText(entry.paneId, cleaned)
+          await say({ text: `Sent: ${cleaned}` })
         }
         return
       }
