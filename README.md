@@ -16,16 +16,7 @@ Perch runs as a background daemon on your Mac, connecting your terminal multiple
 ## Quick Start
 
 ```bash
-# Install dependencies
-pnpm install
-
-# Build everything
-pnpm build
-
-# Link the CLI globally
-pnpm --filter cli link --global
-
-# Run interactive setup
+npm install --global perch
 perch setup
 ```
 

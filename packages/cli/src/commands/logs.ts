@@ -1,5 +1,5 @@
 import { spawn } from 'child_process'
-import { CONFIG_DIR } from '../../../daemon/src/config.js'
+import { CONFIG_DIR } from '@perch-dev/shared/config'
 import { join } from 'path'
 import { ui } from '../ui.js'
 

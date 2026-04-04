@@ -1,16 +1,42 @@
 {
   "name": "perch",
-  "version": "1.0.0",
-  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Remote-control your terminal sessions from Slack",
+  "bin": {
+    "perch": "packages/cli/dist/index.js"
+  },
+  "files": [
+    "packages/cli/dist",
+    "packages/daemon/dist",
+    "packages/shared/dist"
+  ],
+  "publishConfig": { "access": "public" },
   "scripts": {
     "build": "pnpm -r run build",
     "test": "pnpm -r run test",
     "test:coverage": "pnpm -r run test:coverage",
     "lint": "pnpm -r run lint",
     "dev": "pnpm --filter daemon run dev",
-    "setup": "pnpm --filter cli run start setup"
+    "setup": "pnpm --filter cli run start setup",
+    "prepublishOnly": "pnpm build"
+  },
+  "dependencies": {
+    "@inquirer/prompts": "^5.0.0",
+    "@slack/bolt": "^3.21.0",
+    "@slack/web-api": "^7.0.0",
+    "chalk": "^5.3.0",
+    "execa": "^9.3.0",
+    "keytar": "^7.9.0",
+    "ora": "^8.0.0"
   },
   "devDependencies": {
     "typescript": "^5.4.0"
+  },
+  "keywords": ["terminal", "slack", "tmux", "cmux", "remote", "cli"],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/elitecoder/perch.git"
   }
 }

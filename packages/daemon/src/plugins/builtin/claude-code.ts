@@ -91,8 +91,16 @@ export class ClaudeCodePlugin implements IToolPlugin {
     accept: 'y',
     reject: 'n',
     interrupt: 'C-c',
+    esc: 'Escape',
     escape: 'Escape',
     confirm: 'Enter',
+    enter: 'Enter',
+    tab: 'Tab',
+    up: 'Up',
+    down: 'Down',
+    left: 'Left',
+    right: 'Right',
+    space: 'Space',
   }
 
   watch = {

@@ -1,17 +1,21 @@
 {
   "name": "@perch-dev/daemon",
-  "version": "1.0.0",
-  "private": true,
+  "version": "0.1.0",
   "type": "module",
-  "exports": { ".": "./dist/index.js" },
+  "exports": {
+    ".": "./dist/index.js",
+    "./config": "./dist/config.js"
+  },
+  "private": true,
   "scripts": {
-    "build": "tsup src/index.ts --format esm --dts",
+    "build": "tsup --format esm --dts",
     "dev": "tsup src/index.ts --format esm --watch",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "lint": "eslint src"
   },
   "dependencies": {
+    "@perch-dev/shared": "workspace:*",
     "@slack/bolt": "^3.21.0",
     "@slack/web-api": "^7.0.0",
     "execa": "^9.3.0",

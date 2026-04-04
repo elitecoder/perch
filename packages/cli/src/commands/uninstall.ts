@@ -3,7 +3,7 @@ import { uninstall } from '../launchagent.js'
 import { clearAllSecrets } from '../keychain.js'
 import { ui } from '../ui.js'
 import { rmSync, existsSync } from 'fs'
-import { CONFIG_DIR } from '../../../daemon/src/config.js'
+import { CONFIG_DIR } from '@perch-dev/shared/config'
 
 export async function runUninstall(): Promise<void> {
   const proceed = await confirm({ message: 'This will remove the Perch LaunchAgent. Continue?' })

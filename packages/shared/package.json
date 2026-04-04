@@ -1,0 +1,18 @@
+{
+  "name": "@perch-dev/shared",
+  "version": "0.1.0",
+  "type": "module",
+  "exports": {
+    ".": "./dist/index.js",
+    "./config": "./dist/config.js"
+  },
+  "private": true,
+  "scripts": {
+    "build": "tsup --format esm --dts"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "tsup": "^8.0.0",
+    "typescript": "^5.4.0"
+  }
+}

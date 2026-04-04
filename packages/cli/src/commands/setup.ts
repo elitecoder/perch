@@ -8,7 +8,7 @@ import { detectMultiplexers, installInstructions } from '../detector.js'
 import { validateBotToken, validateAppToken, validateChannel } from '../validator.js'
 import { getSecret, setSecret } from '../keychain.js'
 import { install, resolveNodePath } from '../launchagent.js'
-import { writeConfig, readConfig } from '../../../daemon/src/config.js'
+import { writeConfig, readConfig } from '@perch-dev/shared/config'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 

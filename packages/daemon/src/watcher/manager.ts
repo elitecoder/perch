@@ -6,6 +6,7 @@ import { StateMachine } from './state-machine.js'
 
 interface WatchEntry {
   paneId: string
+  threadTs: string
   adapter: ITerminalAdapter
   plugin: IToolPlugin
   liveView: LiveView
@@ -16,17 +17,19 @@ interface WatchEntry {
 
 export class WatcherManager {
   private _watches = new Map<string, WatchEntry>()
+  private _threadToPane = new Map<string, string>()
 
   /**
    * Start watching a pane. Posts meaningful updates via liveView.
    * No-op if already watching.
    */
-  watch(paneId: string, adapter: ITerminalAdapter, plugin: IToolPlugin, liveView: LiveView): void {
+  watch(paneId: string, adapter: ITerminalAdapter, plugin: IToolPlugin, liveView: LiveView, threadTs?: string): void {
     if (this._watches.has(paneId)) return
 
     const stateMachine = new StateMachine('idle')
     const entry: WatchEntry = {
       paneId,
+      threadTs: threadTs ?? '',
       adapter,
       plugin,
       liveView,
@@ -37,6 +40,7 @@ export class WatcherManager {
       }, plugin.watch.pollIntervalMs),
     }
     this._watches.set(paneId, entry)
+    if (threadTs) this._threadToPane.set(threadTs, paneId)
   }
 
   /** Stop watching a pane. No-op if not watching. */
@@ -44,7 +48,15 @@ export class WatcherManager {
     const entry = this._watches.get(paneId)
     if (!entry) return
     clearInterval(entry.timer)
+    if (entry.threadTs) this._threadToPane.delete(entry.threadTs)
     this._watches.delete(paneId)
+  }
+
+  /** Look up pane ID and its watch entry by thread timestamp. */
+  getByThread(threadTs: string): WatchEntry | undefined {
+    const paneId = this._threadToPane.get(threadTs)
+    if (!paneId) return undefined
+    return this._watches.get(paneId)
   }
 
   /** List all currently watched pane IDs. */

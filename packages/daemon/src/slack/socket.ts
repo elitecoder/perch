@@ -70,12 +70,37 @@ export function createSocketApp(opts: SocketAppOptions): { app: App; poster: Pos
 
     // Thread replies → forward to the watched pane for that thread
     if (threadTs) {
-      const watches = watcher.listWatches()
-      if (watches.length > 0) {
-        const paneId = watches[0]!
-        const plugin = plugins.find(p => p.detect(cleaned))
-        const resolvedKey = plugin?.keyAliases[cleaned.toLowerCase()] ?? cleaned
-        await adapter.sendText(paneId, resolvedKey)
+      const entry = watcher.getByThread(threadTs)
+      if (entry) {
+        const lower = cleaned.toLowerCase()
+
+        // List available keys
+        if (lower === 'keys' || lower === 'help') {
+          const keyNames = Object.keys(entry.plugin.keyAliases)
+          const msg = keyNames.length
+            ? `*Keys for ${entry.plugin.displayName}:*\n${keyNames.map(k => `• \`${k}\` → ${entry.plugin.keyAliases[k]}`).join('\n')}\n\nType \`unwatch\` to stop.`
+            : 'No key aliases for this preset.'
+          await say({ text: msg })
+          return
+        }
+
+        // Unwatch from within the thread
+        if (lower === 'unwatch') {
+          watcher.unwatch(entry.paneId)
+          const { readState, writeState } = await import('../config.js')
+          const state = readState()
+          writeState({ ...state, watches: state.watches.filter(id => id !== entry.paneId) })
+          await say({ text: `:white_check_mark: Stopped watching \`${entry.paneId}\`` })
+          return
+        }
+
+        // Check if it's a key alias (esc, ctrl-c, etc.)
+        const keyAlias = entry.plugin.keyAliases[lower]
+        if (keyAlias) {
+          await adapter.sendKey(entry.paneId, keyAlias)
+        } else {
+          await adapter.sendText(entry.paneId, cleaned)
+        }
         return
       }
     }

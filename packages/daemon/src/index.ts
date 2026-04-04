@@ -58,7 +58,7 @@ async function main() {
         plugins.find(p => p.detect(initialContent)) ??
         plugins[plugins.length - 1]!
       const { ts } = await poster.post(`:eyes: Resumed watching \`${paneId}\` with *${plugin.displayName}*`)
-      watcher.watch(paneId, adapter, plugin, poster.makeLiveView(ts))
+      watcher.watch(paneId, adapter, plugin, poster.makeLiveView(ts), ts)
       resumed.push(paneId)
     } catch (err) {
       console.error(`Perch: failed to resume watch for ${paneId}:`, err)

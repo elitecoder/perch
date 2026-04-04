@@ -48,10 +48,14 @@ export function makeWatchHandlers(
       writeConfig({ ...config, defaultPreset: plugin.id })
     }
 
+    const keyNames = Object.keys(plugin.keyAliases)
+    const keysHint = keyNames.length
+      ? `\nKeys: ${keyNames.map(k => `\`${k}\``).join(', ')}\nType \`unwatch\` to stop.`
+      : ''
     const { ts } = await poster.post(
-      `:eyes: Watching \`${paneId}\` with *${plugin.displayName}* — replies here will be forwarded to the pane.`
+      `:eyes: Watching \`${paneId}\` with *${plugin.displayName}* — replies here will be forwarded to the pane.${keysHint}`
     )
-    watcher.watch(paneId, adapter, plugin, poster.makeLiveView(ts))
+    watcher.watch(paneId, adapter, plugin, poster.makeLiveView(ts), ts)
     const state = readState()
     if (!state.watches.includes(paneId)) {
       writeState({ ...state, watches: [...state.watches, paneId] })

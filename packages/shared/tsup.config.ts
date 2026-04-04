@@ -7,5 +7,4 @@ export default defineConfig({
   sourcemap: true,
   clean: true,
   target: 'node20',
-  external: ['keytar'],
 })
