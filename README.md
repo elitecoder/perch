@@ -1,128 +1,203 @@
-# Perch
+# Perch: remote-control your terminal from Slack
 
-Remote-control your terminal sessions from Slack.
+[![GitHub Stars](https://img.shields.io/github/stars/elitecoder/perch?style=flat-square)](https://github.com/elitecoder/perch)
+[![Node.js 20+](https://img.shields.io/badge/node-20%2B-blue?style=flat-square)](https://nodejs.org/)
+[![License: Apache 2.0](https://img.shields.io/badge/license-Apache%202.0-green?style=flat-square)](./LICENSE)
+[![Open Issues](https://img.shields.io/github/issues/elitecoder/perch?style=flat-square)](https://github.com/elitecoder/perch/issues)
 
-Perch runs as a background daemon on your Mac, connecting your terminal multiplexer (tmux, cmux, Zellij, or GNU Screen) to a Slack channel. Send commands from Slack, watch pane output in real time, and interact with tools like Claude Code — all without switching windows.
+Send a Slack message. Control your terminal. Watch Claude Code think in real time.
 
-## Features
+Perch is a macOS daemon that bridges Slack and your terminal multiplexer — tmux, cmux, Zellij, or GNU Screen.
+List sessions, read output, send commands, and **watch panes live** — all from your phone, tablet, or any device with Slack.
 
-- **Terminal control** — list sessions, read pane output, send text and keystrokes
-- **Live watch** — monitor a pane with updates edited in place (no message flood)
-- **Preset plugins** — `claude` preset understands Claude Code's states (thinking, waiting, idle, error); `generic` works with anything
-- **Workspace management** — create/close sessions, split panes, rename, select
-- **macOS native** — runs as a LaunchAgent, restarts on login, credentials stored in Keychain
+*No SSH tunnels. No port forwarding. No VPN. Just Slack.*
 
-## Install
+---
 
-```bash
-curl -fsSL https://raw.githubusercontent.com/elitecoder/perch/main/scripts/install.sh | bash
-```
-
-This installs Perch to `~/.perch`, builds it, and links the `perch` command globally. Requires Node.js 20+.
-
-To update:
+**Install:**
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/elitecoder/perch/main/scripts/install.sh | bash
 ```
 
-Same command — it pulls the latest changes if already installed.
+## Why Perch
 
-To uninstall:
+You're running Claude Code on a beefy workstation at home. You step away. Now what?
 
-```bash
-perch uninstall
+- SSH from your phone? Painful.
+- Leave a browser tab open? Fragile.
+- Hope the agent finishes? Risky.
+
+**Perch lets you stay in the loop from anywhere Slack works** — which is everywhere.
+
+It's designed to be:
+
+- **Instant** — type `list` in Slack, see your sessions. Type `send 5 echo hello`, it happens.
+- **Live** — `watch` a pane and get a single updating message with real-time output, not a flood of notifications
+- **Smart** — the Claude Code preset detects thinking/waiting/idle/error states and shows transitions
+- **Unobtrusive** — runs as a macOS LaunchAgent, starts on login, credentials in Keychain
+- **Simple** — one `perch setup` command configures everything: Slack app, tokens, daemon
+
+---
+
+## Demo
+
+> **Talk to Claude Code from Slack — on any device.**
+
+```
+You (Slack):  list
+Perch:        cmux:dev:1:main:5  [claude-code]  (idle)
+              cmux:dev:1:main:6  [shell]
+
+You (Slack):  watch 5
+Perch:        Watching cmux:dev:1:main:5 with preset "claude"
+
+You (Slack):  send 5 fix the flaky test in auth.test.ts
+Perch:        ⏎ sent to cmux:dev:1:main:5
+
+              ┌─ Live Watch ──────────────────────────┐
+              │ State: 🤔 thinking                     │
+              │                                        │
+              │ Claude is reading auth.test.ts...       │
+              │ Found race condition in beforeEach...   │
+              └────────────────────────────────────────┘
+
+              ┌─ Live Watch ──────────────────────────┐
+              │ State: ⏳ waiting (for approval)       │
+              │                                        │
+              │ Ready to apply fix — approve?           │
+              └────────────────────────────────────────┘
+
+You (Slack):  accept
+Perch:        ⏎ sent to cmux:dev:1:main:5
 ```
 
-## Setup
+The watch message **edits in place** — no message flood, just one updating thread.
+
+---
+
+## Quick Start
 
 ```bash
+# 1. Install
+curl -fsSL https://raw.githubusercontent.com/elitecoder/perch/main/scripts/install.sh | bash
+
+# 2. Setup (creates Slack app, stores tokens, starts daemon)
 perch setup
+
+# 3. Go to your Slack channel and type:
+#    list
 ```
 
-This walks you through:
-1. Detecting your terminal multiplexer
-2. Creating a Slack app (manifest provided)
-3. Collecting and validating tokens (stored in Keychain)
-4. Configuring the Slack channel
-5. Installing the LaunchAgent
+That's it. You're remote-controlling your terminal from Slack.
 
 ## Slack Commands
 
 ### Terminal
-| Command | Description |
-|---------|-------------|
-| `list` | List all sessions, windows, and panes |
-| `tree [session]` | Show session tree |
-| `read <pane> [lines]` | Read pane output (default 50 lines) |
-| `send <pane> <text>` | Send text + Enter to a pane |
-| `key <pane> <key>` | Send a single keystroke |
+
+```
+list                      List all sessions, windows, and panes
+tree [session]            Show session tree
+read <pane> [lines]       Read pane output (default 50 lines)
+send <pane> <text>        Send text + Enter to a pane
+key <pane> <keystroke>    Send a single keystroke (e.g. Escape, C-c)
+```
 
 ### Watch
-| Command | Description |
-|---------|-------------|
-| `watch <pane> [--preset id]` | Start watching a pane (use `list` to get pane IDs) |
-| `unwatch <pane>` | Stop watching |
-| `watching` | List currently watched panes |
-| `preset <plugin-id>` | Set global default preset |
-| `preset <pane> <plugin-id>` | Override preset for a specific pane |
+
+```
+watch <pane> [--preset]   Start watching a pane live
+unwatch <pane>            Stop watching
+watching                  List currently watched panes
+preset <plugin>           Set global default preset
+preset <pane> <plugin>    Override preset for a specific pane
+```
 
 ### Workspace
-| Command | Description |
-|---------|-------------|
-| `new session <name>` | Create a new session |
-| `new split <dir> <pane>` | Split pane (left/right/up/down) |
-| `rename <target> <name>` | Rename a session |
-| `close <target>` | Close a session |
-| `select <pane>` | Switch active pane |
+
+```
+new session <name>        Create a new session
+new split <dir> <pane>    Split pane (left/right/up/down)
+rename <target> <name>    Rename a session
+close <target>            Close a session
+select <pane>             Switch active pane
+```
 
 ### System
-| Command | Description |
-|---------|-------------|
-| `help` | Show command list |
-| `status` | Daemon status, uptime, active watches |
 
-## CLI Commands
+```
+help                      Show command list
+status                    Daemon status, uptime, active watches
+```
+
+## Watch Presets
+
+| Preset | What it does |
+|--------|-------------|
+| `claude` | Tracks Claude Code states: thinking, waiting, idle, error. Shows transitions. Key aliases: `accept`, `reject`, `interrupt`. |
+| `generic` | Works with any terminal process — raw output diffing, no state awareness. |
+
+The first `watch` auto-detects and saves the best preset. Override per-pane with `preset <pane> <id>`.
+
+## CLI
 
 ```bash
 perch setup      # Interactive setup wizard
 perch status     # Check daemon status
 perch restart    # Restart the daemon
 perch logs       # Tail daemon logs
-perch uninstall  # Remove Perch
+perch uninstall  # Remove everything cleanly
 ```
 
-## Presets
+## How It Works
 
-| Preset | Description |
-|--------|-------------|
-| `claude` | Claude Code — state tracking, transition alerts, key aliases (`accept`, `reject`, `interrupt`) |
-| `generic` | Any terminal process — raw output diffing, no state awareness |
+```
+Slack message → Perch daemon → terminal multiplexer → your pane
+                     ↓
+              reads output → posts back to Slack
+```
 
-The first `watch` auto-saves the detected preset as the global default. Override per-pane with `preset <pane> <plugin-id>`.
+Perch runs as a LaunchAgent (`~/Library/LaunchAgents/dev.perch.plist`) that:
+1. Connects to Slack via Socket Mode (real-time, no webhooks)
+2. Translates your messages into terminal multiplexer commands
+3. For watched panes, polls output and edits a single Slack message in-place
 
-## Architecture
+Credentials are stored in macOS Keychain (service `dev.perch`). Config lives at `~/.config/perch/config.json`.
+
+### Architecture
 
 ```
 packages/
-  cli/        # CLI tool (perch setup, status, restart, logs, uninstall)
-  daemon/     # Background daemon (Slack socket mode, terminal adapters, watcher)
-  shared/     # Shared config types and utilities
-scripts/      # Install script
-slack/        # Slack app manifest
-launchd/      # LaunchAgent plist template
+  shared/     Shared config types and read/write utilities
+  cli/        CLI tool — setup, status, restart, logs, uninstall
+  daemon/     Background daemon — Slack socket, terminal adapters, watcher engine
+scripts/      Install script
+slack/        Slack app manifest
+launchd/      LaunchAgent plist template
 ```
 
 ## Supported Multiplexers
 
-- **tmux** — detected via `which tmux`
-- **cmux** — detected via app bundle path or `which cmux`
-- **Zellij** — detected via `which zellij`
-- **GNU Screen** — detected via `which screen`
+| Multiplexer | Detection |
+|-------------|-----------|
+| **tmux** | `which tmux` |
+| **cmux** | App bundle or `which cmux` |
+| **Zellij** | `which zellij` |
+| **GNU Screen** | `which screen` |
+
+## Install / Update / Uninstall
+
+```bash
+# Install (or update — same command)
+curl -fsSL https://raw.githubusercontent.com/elitecoder/perch/main/scripts/install.sh | bash
+
+# Uninstall
+perch uninstall
+```
+
+Requires Node.js 20+. Installs to `~/.perch`, links `perch` globally.
 
 ## Configuration
-
-Config lives at `~/.config/perch/config.json`:
 
 ```json
 {
@@ -134,6 +209,10 @@ Config lives at `~/.config/perch/config.json`:
   "panePresets": {}
 }
 ```
+
+## Contributing
+
+Contributions welcome! Open an issue or PR at [github.com/elitecoder/perch](https://github.com/elitecoder/perch).
 
 ## License
 
