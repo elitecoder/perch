@@ -162,7 +162,11 @@ export class CmuxAdapter implements ITerminalAdapter {
         surface: `${parts[3]}:${parts[4]}`,
       }
     }
-    // fallback: treat as raw surface ref
+    // fallback: bare number like "3" → "surface:3"
+    if (/^\d+$/.test(paneId)) {
+      return { workspace: '', surface: `surface:${paneId}` }
+    }
+    // already a surface ref like "surface:3"
     return { workspace: '', surface: paneId }
   }
 }
