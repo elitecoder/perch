@@ -15,7 +15,7 @@ Perch runs as a background daemon on your Mac, connecting your terminal multiple
 ## Quick Start
 
 ```bash
-npm install --global perch
+npm install --global github:elitecoder/perch
 perch setup
 ```
 
