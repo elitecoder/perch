@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.1.1 (2026-04-03)
+
+### Fixes
+
+- **npm install works** — `@perch-dev/shared` is now bundled inline into the CLI dist, so `npm install --global perch` resolves correctly
+- **CI passes** — fixed workflow to build shared package first; updated all tests for LiveView, cmux adapter mocks, and fs fallback paths
+- **Re-watch starts fresh** — watching an already-watched pane silently unwatches and starts a new thread instead of erroring
+- **Setup preserves channel** — re-running `perch setup` shows existing channel ID as default
+
+### Changes
+
+- Removed menubar app from distribution (CLI covers all functionality)
+- Licensed under Apache 2.0
+
 ## 0.1.0 (2026-04-03)
 
 First public release.
