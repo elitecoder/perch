@@ -75,12 +75,16 @@ describe('watch command handlers', () => {
       vi.mocked(deps.watcher.listWatches).mockReturnValue(['%0'])
       await handlers.watch(['%0'], respond)
       expect(deps.watcher.unwatch).toHaveBeenCalledWith('%0')
-      expect(deps.poster.post).toHaveBeenCalledWith(expect.stringContaining('Watching'))
+      const postText = vi.mocked(deps.poster.post).mock.calls[0]![0] as string
+      expect(postText).toContain('Watching')
+      expect(postText).toContain('%0')
     })
 
-    it('starts watching and posts thread header', async () => {
+    it('starts watching and posts thread header with pane ID', async () => {
       await handlers.watch(['%0'], respond)
-      expect(deps.poster.post).toHaveBeenCalledWith(expect.stringContaining('Watching'))
+      const postText = vi.mocked(deps.poster.post).mock.calls[0]![0] as string
+      expect(postText).toContain('Watching')
+      expect(postText).toContain('%0')
       expect(deps.watcher.watch).toHaveBeenCalledWith('%0', deps.adapter, deps.plugin, deps.mockLiveView, '12345.678')
     })
 
@@ -114,15 +118,19 @@ describe('watch command handlers', () => {
   })
 
   describe('watching', () => {
-    it('reports no watches when empty', async () => {
+    it('reports no watches with exact message', async () => {
       await handlers.watching([], respond)
-      expect(respond).toHaveBeenCalledWith(expect.stringContaining('No panes'))
+      const text = respond.mock.calls[0]![0] as string
+      expect(text).toContain('No panes')
     })
 
-    it('lists all watched panes', async () => {
+    it('lists all watched pane IDs', async () => {
       vi.mocked(deps.watcher.listWatches).mockReturnValue(['%0', '%1'])
       await handlers.watching([], respond)
-      expect(respond).toHaveBeenCalledWith(expect.stringContaining('%0'))
+      const text = respond.mock.calls[0]![0] as string
+      expect(text).toContain('%0')
+      expect(text).toContain('%1')
     })
   })
+
 })

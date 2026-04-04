@@ -1,5 +1,7 @@
 import { execa } from 'execa'
-import type { ITerminalAdapter, Pane, Session, Window } from './interface.js'
+import type { ITerminalAdapter, Pane, Session } from './interface.js'
+
+const ANSI_RE = /\x1b\[[0-9;]*[mGKHFABCDJKST]|\x1b[()][AB012]|\x1b=/g
 
 /**
  * ZellijAdapter — wraps the `zellij` CLI.
@@ -29,7 +31,8 @@ export class ZellijAdapter implements ITerminalAdapter {
       .trim()
       .split('\n')
       .map((line, i) => {
-        const name = line.trim().replace(/\s+\[.*\]$/, '') // strip "[current]" annotation
+        const clean = line.replace(ANSI_RE, '').trim()
+        const name = clean.replace(/\s+\[.*$/, '') // strip "[Created ...ago]" and "[current]" annotations
         return {
           id: name,
           name,
@@ -44,11 +47,12 @@ export class ZellijAdapter implements ITerminalAdapter {
       })
   }
 
-  private _makePlaceholderPane(sessionName: string, index: number): Pane[] {
+  private _makePlaceholderPane(sessionName: string, _index: number): Pane[] {
+    // Pane index 0 is always the default pane in a zellij session
     return [
       {
-        id: `zellij:${sessionName}:0:${index}`,
-        index,
+        id: `zellij:${sessionName}:0:0`,
+        index: 0,
         active: true,
         command: '',
         dimensions: { rows: 24, cols: 80 },
@@ -57,27 +61,28 @@ export class ZellijAdapter implements ITerminalAdapter {
   }
 
   async readPane(paneId: string, _lines?: number): Promise<string> {
-    const session = this._sessionFromPaneId(paneId)
-    const { stdout } = await execa('zellij', [
-      '--session', session,
-      'action', 'dump-screen', '/dev/stdout',
-    ])
+    const { session, paneIndex } = this._parsePaneId(paneId)
+    const args = ['--session', session, 'action', 'dump-screen', '--full']
+    if (paneIndex !== undefined) args.push('--pane-id', String(paneIndex))
+    const { stdout } = await execa('zellij', args)
     return stdout
   }
 
   async sendText(paneId: string, text: string): Promise<void> {
-    const session = this._sessionFromPaneId(paneId)
-    await execa('zellij', ['--session', session, 'action', 'write-chars', text])
-    await execa('zellij', ['--session', session, 'action', 'write', '10']) // Enter = \n (decimal 10)
+    const { session, paneIndex } = this._parsePaneId(paneId)
+    const paneArgs = paneIndex !== undefined ? ['--pane-id', String(paneIndex)] : []
+    await execa('zellij', ['--session', session, 'action', 'write-chars', ...paneArgs, text])
+    await execa('zellij', ['--session', session, 'action', 'write', ...paneArgs, '10']) // Enter = \n (decimal 10)
   }
 
   async sendKey(paneId: string, key: string): Promise<void> {
-    const session = this._sessionFromPaneId(paneId)
-    await execa('zellij', ['--session', session, 'action', 'write-chars', key])
+    const { session, paneIndex } = this._parsePaneId(paneId)
+    const paneArgs = paneIndex !== undefined ? ['--pane-id', String(paneIndex)] : []
+    await execa('zellij', ['--session', session, 'action', 'write-chars', ...paneArgs, key])
   }
 
   async createSession(name: string, _cwd?: string, _command?: string): Promise<Session> {
-    await execa('zellij', ['--session', name, 'options', '--detach'])
+    await execa('zellij', ['attach', name, '--create-background'])
     const sessions = await this.listSessions()
     const session = sessions.find(s => s.name === name)
     if (!session) throw new Error(`Failed to find Zellij session "${name}" after creation`)
@@ -85,17 +90,19 @@ export class ZellijAdapter implements ITerminalAdapter {
   }
 
   async renameSession(sessionId: string, name: string): Promise<void> {
-    await execa('zellij', ['--session', sessionId, 'action', 'rename-session', name])
+    const { session } = this._parsePaneId(sessionId)
+    await execa('zellij', ['--session', session, 'action', 'rename-session', name])
   }
 
   async closeSession(sessionId: string): Promise<void> {
-    await execa('zellij', ['--session', sessionId, 'action', 'quit'])
+    const { session } = this._parsePaneId(sessionId)
+    await execa('zellij', ['kill-session', session])
   }
 
   async splitPane(paneId: string, direction: 'left' | 'right' | 'up' | 'down'): Promise<Pane> {
-    const session = this._sessionFromPaneId(paneId)
-    const dirFlag = direction === 'left' || direction === 'right' ? '--direction right' : '--direction down'
-    await execa('zellij', ['--session', session, 'action', 'new-pane', dirFlag])
+    const { session } = this._parsePaneId(paneId)
+    const dir = direction === 'left' || direction === 'right' ? 'right' : 'down'
+    await execa('zellij', ['--session', session, 'action', 'new-pane', '--direction', dir])
     // Return a placeholder — Zellij doesn't expose new pane ID over CLI
     return {
       id: `zellij:${session}:0:new`,
@@ -110,9 +117,16 @@ export class ZellijAdapter implements ITerminalAdapter {
     // Zellij doesn't support selecting a specific pane by ID over the CLI in v0.x
   }
 
-  private _sessionFromPaneId(paneId: string): string {
+  private _parsePaneId(paneId: string): { session: string; paneIndex?: number } {
     const parts = paneId.split(':')
-    // format: zellij:<session>:<window>:<index>
-    return parts.length >= 2 ? parts[1]! : paneId
+    // format: zellij:<session>:<window>:<paneIndex>
+    if (parts.length >= 4 && parts[0] === 'zellij') {
+      const idx = parseInt(parts[3]!, 10)
+      return { session: parts[1]!, paneIndex: Number.isNaN(idx) ? undefined : idx }
+    }
+    if (parts.length >= 2 && parts[0] === 'zellij') {
+      return { session: parts[1]! }
+    }
+    return { session: paneId }
   }
 }

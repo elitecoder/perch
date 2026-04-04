@@ -131,7 +131,7 @@ export class CmuxAdapter implements ITerminalAdapter {
   }
 
   async closeSession(sessionId: string): Promise<void> {
-    await cmux(['workspace-action', '--action', 'close', '--workspace', sessionId])
+    await cmux(['close-workspace', '--workspace', sessionId])
   }
 
   async splitPane(paneId: string, direction: 'left' | 'right' | 'up' | 'down'): Promise<Pane> {

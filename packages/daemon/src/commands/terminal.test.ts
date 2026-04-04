@@ -46,30 +46,49 @@ describe('terminal command handlers', () => {
   })
 
   describe('list', () => {
-    it('responds with session info', async () => {
+    it('responds with session name and pane info', async () => {
       vi.mocked(adapter.listSessions).mockResolvedValue([mockSession])
       await handlers.list([], respond)
-      expect(respond).toHaveBeenCalledWith(expect.stringContaining('main'))
+      const text = respond.mock.calls[0]![0] as string
+      expect(text).toContain('*main*')
+      expect(text).toContain('`0`') // short pane ID
+      expect(text).toContain('vim')  // command
     })
 
-    it('responds with no sessions message when empty', async () => {
+    it('responds with exact no-sessions message', async () => {
       vi.mocked(adapter.listSessions).mockResolvedValue([])
       await handlers.list([], respond)
-      expect(respond).toHaveBeenCalledWith(expect.stringContaining('No active'))
+      expect(respond).toHaveBeenCalledWith('No active sessions.')
     })
   })
 
   describe('tree', () => {
-    it('filters by session name when arg given', async () => {
+    it('filters by session name and includes pane details', async () => {
       vi.mocked(adapter.listSessions).mockResolvedValue([mockSession])
       await handlers.tree(['main'], respond)
-      expect(respond).toHaveBeenCalledWith(expect.stringContaining('main'))
+      const text = respond.mock.calls[0]![0] as string
+      expect(text).toContain('*main*')
+      expect(text).toContain('(active)')
+      expect(text).toContain('vim')
     })
 
-    it('responds with not found when session missing', async () => {
+    it('responds with specific not-found message including session name', async () => {
       vi.mocked(adapter.listSessions).mockResolvedValue([mockSession])
       await handlers.tree(['nonexistent'], respond)
-      expect(respond).toHaveBeenCalledWith(expect.stringContaining('not found'))
+      expect(respond).toHaveBeenCalledWith('Session `nonexistent` not found.')
+    })
+
+    it('shows all sessions when no filter given', async () => {
+      vi.mocked(adapter.listSessions).mockResolvedValue([mockSession])
+      await handlers.tree([], respond)
+      const text = respond.mock.calls[0]![0] as string
+      expect(text).toContain('*main*')
+    })
+
+    it('shows no-sessions message when empty and no filter', async () => {
+      vi.mocked(adapter.listSessions).mockResolvedValue([])
+      await handlers.tree([], respond)
+      expect(respond).toHaveBeenCalledWith('No active sessions.')
     })
   })
 
@@ -84,39 +103,77 @@ describe('terminal command handlers', () => {
       expect(adapter.readPane).toHaveBeenCalledWith('%0', 50)
     })
 
-    it('responds with usage when no pane given', async () => {
+    it('responds with usage including command syntax', async () => {
       await handlers.read([], respond)
-      expect(respond).toHaveBeenCalledWith(expect.stringContaining('Usage'))
+      expect(respond).toHaveBeenCalledWith('Usage: `read <pane> [lines]`')
     })
 
-    it('wraps output in code block', async () => {
+    it('wraps output in code block with actual content', async () => {
+      vi.mocked(adapter.readPane).mockResolvedValue('hello world')
       await handlers.read(['%0'], respond)
-      const text = vi.mocked(respond).mock.calls[0]![0] as string
-      expect(text).toMatch(/^```/)
+      expect(respond).toHaveBeenCalledWith('```\nhello world\n```')
+    })
+
+    it('shows (empty) for blank pane content', async () => {
+      vi.mocked(adapter.readPane).mockResolvedValue('  \n  ')
+      await handlers.read(['%0'], respond)
+      expect(respond).toHaveBeenCalledWith('```\n(empty)\n```')
     })
   })
 
   describe('send', () => {
-    it('calls sendText with pane and text', async () => {
+    it('joins multi-word text and sends to pane', async () => {
       await handlers.send(['%0', 'hello', 'world'], respond)
       expect(adapter.sendText).toHaveBeenCalledWith('%0', 'hello world')
+      expect(respond).toHaveBeenCalledWith(':white_check_mark: Sent to `%0`')
     })
 
-    it('responds with usage when args missing', async () => {
+    it('responds with usage when text missing', async () => {
       await handlers.send(['%0'], respond)
-      expect(respond).toHaveBeenCalledWith(expect.stringContaining('Usage'))
+      expect(respond).toHaveBeenCalledWith('Usage: `send <pane> <text>`')
+    })
+
+    it('responds with usage when both args missing', async () => {
+      await handlers.send([], respond)
+      expect(respond).toHaveBeenCalledWith('Usage: `send <pane> <text>`')
     })
   })
 
   describe('key', () => {
-    it('calls sendKey with pane and key', async () => {
+    it('sends key and confirms with both key and pane in response', async () => {
       await handlers.key(['%0', 'C-c'], respond)
       expect(adapter.sendKey).toHaveBeenCalledWith('%0', 'C-c')
+      expect(respond).toHaveBeenCalledWith(':white_check_mark: Sent key `C-c` to `%0`')
     })
 
-    it('responds with usage when args missing', async () => {
+    it('responds with usage when key missing', async () => {
       await handlers.key(['%0'], respond)
-      expect(respond).toHaveBeenCalledWith(expect.stringContaining('Usage'))
+      expect(respond).toHaveBeenCalledWith('Usage: `key <pane> <key>`')
+    })
+
+    it('responds with usage when both args missing', async () => {
+      await handlers.key([], respond)
+      expect(respond).toHaveBeenCalledWith('Usage: `key <pane> <key>`')
+    })
+  })
+
+  describe('resolvePane', () => {
+    it('resolves short numeric ID to full pane ID', async () => {
+      vi.mocked(adapter.listSessions).mockResolvedValue([mockSession])
+      const resolved = await handlers.resolvePane('0')
+      expect(resolved).toBe('tmux:main:@0:%0')
+    })
+
+    it('passes through full IDs without scanning', async () => {
+      const resolved = await handlers.resolvePane('tmux:main:@0:%0')
+      expect(resolved).toBe('tmux:main:@0:%0')
+      expect(adapter.listSessions).not.toHaveBeenCalled()
+    })
+
+    it('returns input as fallback when short ID not found', async () => {
+      vi.mocked(adapter.listSessions).mockResolvedValue([mockSession])
+      const resolved = await handlers.resolvePane('999')
+      expect(resolved).toBe('999')
     })
   })
 })
