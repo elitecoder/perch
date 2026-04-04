@@ -39,9 +39,6 @@ importers:
       '@inquirer/prompts':
         specifier: ^5.0.0
         version: 5.5.0
-      '@perch-dev/shared':
-        specifier: workspace:*
-        version: link:../shared
       '@slack/web-api':
         specifier: ^7.0.0
         version: 7.15.0
@@ -58,6 +55,9 @@ importers:
         specifier: ^8.0.0
         version: 8.2.0
     devDependencies:
+      '@perch-dev/shared':
+        specifier: workspace:*
+        version: link:../shared
       '@types/node':
         specifier: ^20.0.0
         version: 20.19.37
