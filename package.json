@@ -3,7 +3,7 @@
   "version": "0.1.1",
   "private": true,
   "type": "module",
-  "description": "Remote-control your terminal sessions from Slack",
+  "description": "Manage Claude Code sessions from Slack",
   "bin": {
     "perch": "packages/cli/dist/index.js"
   },

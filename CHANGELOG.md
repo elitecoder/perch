@@ -19,8 +19,10 @@
 
 - **Short IDs in `list`** — `list` command now shows compact short IDs (e.g. `5`) instead of full pane IDs
 - **Remove generic plugin** — removed unused `generic` preset plugin
-- **Remove Zellij E2E tests** — removed Zellij E2E test file (no adapter implemented)
-- **E2E test config** — added dedicated vitest E2E config and tmux-claude E2E test
+- **Remove Zellij support** — removed Zellij E2E tests and references (no adapter implemented)
+- **Key alias updates** — `accept` now sends Enter, `reject` sends Escape
+- **E2E test improvements** — added cmux Claude session E2E test, replaced shell-command forwarding tests with prompt forwarding, added dedicated vitest E2E config
+- **README rewrite** — updated to reflect transcript-powered workflow, Claude-only focus, current command set
 
 ## 0.1.0 (2026-04-04)
 
