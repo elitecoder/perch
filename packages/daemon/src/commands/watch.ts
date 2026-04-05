@@ -6,7 +6,7 @@ import type { CommandHandler } from './router.js'
 import { readConfig, writeConfig, readState, writeState } from '../config.js'
 import { resolveClaudeSession } from '../transcript/resolver.js'
 
-function shortId(paneId: string): string {
+export function shortId(paneId: string): string {
   return paneId.match(/:(\d+)$/)?.[1] ?? paneId.match(/%(\d+)$/)?.[1] ?? paneId
 }
 
@@ -72,9 +72,11 @@ export function makeWatchHandlers(
     }
     const state = readState()
     if (!state.watches.includes(paneId)) {
-      writeState({ ...state, watches: [...state.watches, paneId] })
+      writeState({ ...state, watches: [...state.watches, paneId], watchThreads: { ...state.watchThreads, [paneId]: ts } })
+    } else {
+      writeState({ ...state, watchThreads: { ...state.watchThreads, [paneId]: ts } })
     }
-    await respond(`:white_check_mark: Started watching \`${paneId}\``)
+    await poster.postToThread(ts, `:white_check_mark: Started watching \`${shortId(paneId)}\``)
   }
 
   const unwatch: CommandHandler = async (args, respond) => {
@@ -85,7 +87,8 @@ export function makeWatchHandlers(
     const paneId = await resolvePane(args[0])
     watcher.unwatch(paneId)
     const state = readState()
-    writeState({ ...state, watches: state.watches.filter(id => id !== paneId) })
+    const { [paneId]: _, ...remainingThreads } = state.watchThreads ?? {}
+    writeState({ ...state, watches: state.watches.filter(id => id !== paneId), watchThreads: remainingThreads })
     await respond(`:white_check_mark: Stopped watching \`${shortId(paneId)}\``)
   }
 
@@ -122,7 +125,7 @@ export function makeWatchHandlers(
 
     if (paneId) {
       writeConfig({ ...config, panePresets: { ...config.panePresets, [paneId]: pluginId } })
-      await respond(`:white_check_mark: Preset for \`${paneId}\` set to *${plugin.displayName}*`)
+      await respond(`:white_check_mark: Preset for \`${shortId(paneId)}\` set to *${plugin.displayName}*`)
     } else {
       writeConfig({ ...config, defaultPreset: pluginId })
       await respond(`:white_check_mark: Default preset set to *${plugin.displayName}*`)

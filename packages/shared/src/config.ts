@@ -49,6 +49,8 @@ export function writeConfig(config: PerchConfig): void {
 
 export interface PerchState {
   watches: string[]
+  /** Maps paneId → Slack thread timestamp for the active watch thread */
+  watchThreads?: Record<string, string>
 }
 
 export function readState(): PerchState {
