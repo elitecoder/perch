@@ -5,3 +5,5 @@ dist/
 coverage/
 *.lock
 !pnpm-lock.yaml
+.claude/worktrees/
+.claude/plans/
