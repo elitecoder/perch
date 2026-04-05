@@ -78,14 +78,14 @@ describe('watch command handlers', () => {
       expect(deps.watcher.unwatch).toHaveBeenCalledWith('%0')
       const postText = vi.mocked(deps.poster.post).mock.calls[0]![0] as string
       expect(postText).toContain('Watching')
-      expect(postText).toContain('%0')
+      expect(postText).toContain('`0`')
     })
 
     it('starts watching and posts thread header with pane ID', async () => {
       await handlers.watch(['%0'], respond)
       const postText = vi.mocked(deps.poster.post).mock.calls[0]![0] as string
       expect(postText).toContain('Watching')
-      expect(postText).toContain('%0')
+      expect(postText).toContain('`0`')
       // JSONL path: watcher.watch (scraping) is NOT called; watchTranscript or warning is used
       expect(deps.watcher.watch).not.toHaveBeenCalled()
     })
@@ -132,8 +132,8 @@ describe('watch command handlers', () => {
       vi.mocked(deps.watcher.listWatches).mockReturnValue(['%0', '%1'])
       await handlers.watching([], respond)
       const text = respond.mock.calls[0]![0] as string
-      expect(text).toContain('%0')
-      expect(text).toContain('%1')
+      expect(text).toContain('`0`')
+      expect(text).toContain('`1`')
     })
   })
 

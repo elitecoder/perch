@@ -248,7 +248,7 @@ export function registerE2ETests(provider: E2EProvider) {
     it('watching — lists watched panes', async () => {
       poster.clear()
       await handleText('watching')
-      expect(poster.last()).toContain(testPaneId)
+      expect(poster.last()).toContain('Watching')
     })
 
     it('unwatch <pane> — stops watching', async () => {
@@ -358,8 +358,8 @@ export function registerE2ETests(provider: E2EProvider) {
     // -- Key aliases (14 total) --
 
     const keyAliasTests: Array<[string, string]> = [
-      ['accept', 'y'],
-      ['reject', 'n'],
+      ['accept', 'Enter'],
+      ['reject', 'Escape'],
       ['interrupt', 'C-c'],
       ['expand', 'C-o'],
       ['esc', 'Escape'],

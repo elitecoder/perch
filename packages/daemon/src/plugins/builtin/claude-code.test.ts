@@ -96,8 +96,8 @@ describe('ClaudeCodePlugin', () => {
   })
 
   describe('keyAliases', () => {
-    it('has accept mapped to y', () => {
-      expect(plugin.keyAliases.accept).toBe('y')
+    it('has accept mapped to Enter', () => {
+      expect(plugin.keyAliases.accept).toBe('Enter')
     })
 
     it('has interrupt mapped to C-c', () => {

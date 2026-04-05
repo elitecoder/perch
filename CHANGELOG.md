@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.1.1 (2026-04-05)
+
+### Features
+
+- **Transcript monitoring** — new transcript system reads Claude Code JSONL session files, detects tool calls, end-of-turn events, and formats them as Slack status updates and responses
+- **Ask command** — interactive Claude Code sessions managed via Slack threads with session lifecycle tracking
+- **Claude Code hooks** — `perch setup` now installs hooks into Claude Code settings for session-start, stop, and notification events
+- **Claude pane finder** — auto-discovers active Claude Code sessions by scanning for `.claude` JSONL transcript files
+
+### Fixes
+
+- **Add `files:read` Slack bot scope** — image and file attachments sent through Slack now download correctly instead of silently saving HTML error pages
+- **Validate file download content-type** — Slack file downloads now check for HTML responses and log a clear error when the bot lacks `files:read` scope
+- **cmux sendText split** — send text and Enter as separate commands for better TUI compatibility (fixes input issues with Claude Code)
+
+### Changes
+
+- **Short IDs in `list`** — `list` command now shows compact short IDs (e.g. `5`) instead of full pane IDs
+- **Remove generic plugin** — removed unused `generic` preset plugin
+- **Remove Zellij E2E tests** — removed Zellij E2E test file (no adapter implemented)
+- **E2E test config** — added dedicated vitest E2E config and tmux-claude E2E test
+
 ## 0.1.0 (2026-04-04)
 
 First public release.
