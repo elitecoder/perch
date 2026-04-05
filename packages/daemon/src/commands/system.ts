@@ -6,28 +6,19 @@ import type { CommandHandler } from './router.js'
 const HELP_TEXT = `
 *Perch Commands*
 
-*Terminal*
-\`list\` / \`ls\`               — List all sessions
-\`tree [session]\`             — Show session → windows → panes tree
-\`read <pane> [lines]\`        — Read pane output (default 50 lines)
-\`send <pane> <text>\`         — Send text + Enter to pane
-\`key <pane> <key>\`           — Send a single keystroke
+*Sessions*
+\`list\` / \`sessions\`             — List active Claude sessions
+\`new <name> [--cwd <path>]\`    — Create session and launch \`claude\`
 
 *Watch*
-\`watch <pane> [--preset id]\` — Start watching a pane (use \`list\` to get pane IDs)
-\`unwatch <pane>\`             — Stop watching
-\`watching\`                   — List currently watched panes
-
-*Workspace*
-\`new session <name> [--cwd <p>] [--cmd <c>]\` — Create session
-\`new split <dir> <pane>\`     — Split pane (left/right/up/down)
-\`rename <target> <name>\`     — Rename session
-\`close <target>\`             — Close session
-\`select <pane>\`              — Switch active pane
+\`watch <pane>\`                  — Start monitoring a Claude session
+\`unwatch <pane>\`                — Stop monitoring
+\`watching\`                      — List currently watched sessions
+_(In a thread: reply, \`accept\`, \`reject\`, \`interrupt\`, \`unwatch\`)_
 
 *System*
-\`help\`                       — Show this message
-\`status\`                     — Daemon status
+\`help\`                          — Show this message
+\`status\`                        — Daemon status
 `.trim()
 
 export function makeSystemHandlers(

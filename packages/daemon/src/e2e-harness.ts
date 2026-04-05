@@ -1,15 +1,17 @@
 /**
  * Shared E2E test harness for Perch — adapter-agnostic.
  *
- * Exercises every Perch feature by wiring up the real adapter, plugins,
+ * Exercises Perch commands by wiring up the real adapter, plugins,
  * WatcherManager, and CommandRouter, replacing only the Slack Poster with a mock.
  *
  * Each adapter test file (e2e-cmux.test.ts, e2e-tmux.test.ts) provides a
  * setup/teardown implementation and calls registerE2ETests().
+ *
+ * Note: `list` returns "No active Claude sessions" in these tests because no
+ * real Claude process is running. For full Claude session tests see e2e-tmux-claude.test.ts.
  */
 import { describe, it, expect, beforeAll, afterAll, vi, type SpyInstance } from 'vitest'
 import { ClaudeCodePlugin } from './plugins/builtin/claude-code.js'
-import { GenericPlugin } from './plugins/builtin/generic.js'
 import { WatcherManager } from './watcher/manager.js'
 import { CommandRouter } from './commands/router.js'
 import { makeTerminalHandlers } from './commands/terminal.js'
@@ -17,7 +19,7 @@ import { makeWorkspaceHandlers } from './commands/workspace.js'
 import { makeWatchHandlers } from './commands/watch.js'
 import { makeSystemHandlers } from './commands/system.js'
 import type { ITerminalAdapter } from './adapters/interface.js'
-import type { LiveView } from './slack/poster.js'
+import type { LiveView, ConversationalView } from './slack/poster.js'
 import type { IToolPlugin } from './plugins/interface.js'
 
 // ---------------------------------------------------------------------------
@@ -55,6 +57,16 @@ export class MockPoster {
     } as LiveView
   }
 
+  makeConversationalView(threadTs: string): ConversationalView {
+    const self = this
+    return {
+      async updateStatus(text: string) { await self.postToThread(threadTs, text) },
+      async postResponse(text: string) { await self.postToThread(threadTs, text) },
+      async updateResponse(text: string) { await self.postToThread(threadTs, text) },
+      async postUser(text: string) { await self.postToThread(threadTs, text) },
+    } as unknown as ConversationalView
+  }
+
   makeThreadPostFn(threadTs: string) {
     return (msg: string) => this.postToThread(threadTs, msg).then(() => undefined)
   }
@@ -71,10 +83,9 @@ export interface E2EProvider {
   /**
    * Create a test workspace/session and return:
    * - adapter: a real ITerminalAdapter instance
-   * - testPaneId: full pane ID (e.g. "cmux:workspace:3:surface:7")
-   * - testShortId: bare numeric short ID shown in `tree` output (e.g. "7")
-   * - testCommandId: (optional) ID to use in commands like `send`, `read`, `watch`.
-   *   Defaults to testShortId. Use full pane ID when short IDs are ambiguous (e.g. zellij).
+   * - testPaneId: full pane ID (e.g. "tmux:perch-e2e-test:@0:%1")
+   * - testShortId: bare numeric short ID (e.g. "1")
+   * - testCommandId: (optional) ID to use in commands. Defaults to testShortId.
    */
   setup(): Promise<{
     adapter: ITerminalAdapter
@@ -96,7 +107,6 @@ function wait(ms = 400) {
   return new Promise(r => setTimeout(r, ms))
 }
 
-const TEST_SESSION_NAME = 'perch-e2e-test'
 const CHILD_SESSION_NAME = 'perch-e2e-child'
 
 export function registerE2ETests(provider: E2EProvider) {
@@ -122,9 +132,11 @@ export function registerE2ETests(provider: E2EProvider) {
         const lower = cleaned.toLowerCase()
 
         if (lower === 'keys' || lower === 'help') {
-          const keyNames = Object.keys(entry.plugin.keyAliases)
+          const keyAliases = entry.plugin?.keyAliases ?? {}
+          const keyNames = Object.keys(keyAliases)
+          const name = entry.plugin?.displayName ?? 'Claude Code'
           const msg = keyNames.length
-            ? `*Keys for ${entry.plugin.displayName}:*\n${keyNames.map(k => `• \`${k}\` → ${entry.plugin.keyAliases[k]}`).join('\n')}\n\nType \`unwatch\` to stop.`
+            ? `*Keys for ${name}:*\n${keyNames.map(k => `• \`${k}\` → ${keyAliases[k]}`).join('\n')}\n\nType \`unwatch\` to stop.`
             : 'No key aliases for this preset.'
           await poster.postToThread(threadTs, msg)
           return
@@ -136,7 +148,8 @@ export function registerE2ETests(provider: E2EProvider) {
           return
         }
 
-        const keyAlias = entry.plugin.keyAliases[lower]
+        const keyAliases = entry.plugin?.keyAliases ?? {}
+        const keyAlias = keyAliases[lower]
         if (keyAlias) {
           await adapter.sendKey(entry.paneId, keyAlias)
         } else {
@@ -167,13 +180,13 @@ export function registerE2ETests(provider: E2EProvider) {
     testShortId = result.testShortId
     testCommandId = result.testCommandId ?? result.testShortId
 
-    plugins = [new ClaudeCodePlugin(), new GenericPlugin()]
+    plugins = [new ClaudeCodePlugin()]
     watcher = new WatcherManager()
     poster = new MockPoster()
     startedAt = new Date()
 
     router = new CommandRouter()
-    const terminalHandlers = makeTerminalHandlers(adapter)
+    const terminalHandlers = makeTerminalHandlers(adapter, watcher)
     const workspaceHandlers = makeWorkspaceHandlers(adapter)
     const watchHandlers = makeWatchHandlers(adapter, plugins, watcher, poster as any, terminalHandlers.resolvePane)
     const systemHandlers = makeSystemHandlers(adapter, plugins, watcher, startedAt)
@@ -187,15 +200,8 @@ export function registerE2ETests(provider: E2EProvider) {
         router.register(name, handler)
       }
     }
-    router.register('new', async (args, respond) => {
-      const sub = args[0]?.toLowerCase()
-      if (sub === 'session') return workspaceHandlers.newSession(args.slice(1), respond)
-      if (sub === 'split') return workspaceHandlers.newSplit(args.slice(1), respond)
-      await respond('Usage: `new session <name>` or `new split <dir> <pane>`')
-    })
-    router.register('rename', workspaceHandlers.rename)
-    router.register('close', workspaceHandlers.close)
-    router.register('select', workspaceHandlers.select)
+    router.register('new', workspaceHandlers.newClaude)
+    router.register('sessions', terminalHandlers.list)
   }, 15_000)
 
   afterAll(async () => {
@@ -208,44 +214,21 @@ export function registerE2ETests(provider: E2EProvider) {
   // -------------------------------------------------------------------------
 
   describe('Terminal commands', () => {
-    it('list — shows test session', async () => {
+    it('list — returns Claude sessions list or empty message', async () => {
       poster.clear()
       await handleText('list')
-      expect(poster.last()).toContain(TEST_SESSION_NAME)
+      const text = poster.last()
+      // Either no sessions running or a formatted list — both valid
+      const valid = text.includes('No active Claude sessions') || text.includes('*Claude sessions:*')
+      expect(valid, `Unexpected list response: ${text}`).toBe(true)
     })
 
-    it('ls — alias for list', async () => {
+    it('sessions — alias for list, same format', async () => {
       poster.clear()
-      await handleText('ls')
-      expect(poster.last()).toContain(TEST_SESSION_NAME)
-    })
-
-    it('tree — shows session tree', async () => {
-      poster.clear()
-      await handleText('tree')
-      expect(poster.last()).toContain(TEST_SESSION_NAME)
-      expect(poster.last()).toContain(testShortId)
-    })
-
-    it('read <pane> — reads pane content', async () => {
-      poster.clear()
-      await handleText(`read ${testCommandId}`)
-      expect(poster.last()).toContain('```')
-    })
-
-    it('send <pane> <text> — sends text to pane', async () => {
-      poster.clear()
-      await handleText(`send ${testCommandId} echo hello-perch-e2e`)
-      expect(poster.last()).toContain('Sent to')
-      await wait(800)
-      const screen = await adapter.readPane(testPaneId, 20)
-      expect(screen).toContain('hello-perch-e2e')
-    })
-
-    it('key <pane> <key> — sends keystroke', async () => {
-      poster.clear()
-      await handleText(`key ${testCommandId} ctrl-c`)
-      expect(poster.last()).toContain('Sent key')
+      await handleText('sessions')
+      const text = poster.last()
+      const valid = text.includes('No active Claude sessions') || text.includes('*Claude sessions:*')
+      expect(valid, `Unexpected sessions response: ${text}`).toBe(true)
     })
   })
 
@@ -254,9 +237,9 @@ export function registerE2ETests(provider: E2EProvider) {
   // -------------------------------------------------------------------------
 
   describe('Watch commands', () => {
-    it('watch <pane> — starts watching', async () => {
+    it('watch <pane> — starts watching (warns: no Claude session)', async () => {
       poster.clear()
-      await handleText(`watch ${testCommandId} --preset generic`)
+      await handleText(`watch ${testCommandId}`)
       const allText = poster.messages.map(m => m.text).join('\n')
       expect(allText).toContain('Watching')
       expect(watcher.listWatches()).toContain(testPaneId)
@@ -274,78 +257,40 @@ export function registerE2ETests(provider: E2EProvider) {
       expect(poster.last()).toContain('Stopped watching')
       expect(watcher.listWatches()).not.toContain(testPaneId)
     })
-
-    it('preset — sets global default', async () => {
-      poster.clear()
-      await handleText('preset generic')
-      expect(poster.last()).toContain('Default preset set to')
-    })
-
-    it('preset <pane> <id> — sets per-pane override', async () => {
-      poster.clear()
-      await handleText(`preset ${testCommandId} claude`)
-      expect(poster.last()).toContain('Preset for')
-    })
   })
 
   // -------------------------------------------------------------------------
-  // Workspace commands
+  // New command — creates session and launches Claude
   // -------------------------------------------------------------------------
 
-  describe('Workspace commands', () => {
+  describe('New command', () => {
     let childSessionId: string
 
-    it('new session — creates session', async () => {
+    it('new <name> — creates session, sends claude command, posts pane ID', async () => {
       poster.clear()
-      await handleText(`new session ${CHILD_SESSION_NAME}`)
+      await handleText(`new ${CHILD_SESSION_NAME}`)
       await wait(600)
-      expect(poster.last()).toContain('Created session')
-      expect(poster.last()).toContain(CHILD_SESSION_NAME)
-      // Verify via adapter
+      const text = poster.last()
+      expect(text).toContain('Created session')
+      expect(text).toContain(CHILD_SESSION_NAME)
+      expect(text).toContain('watch')
+      // Verify session was actually created
       const sessions = await adapter.listSessions()
       const child = sessions.find(s => s.name === CHILD_SESSION_NAME)
       expect(child).toBeDefined()
       childSessionId = child!.id
     })
 
-    it('rename — renames session', async () => {
+    it('new — missing name responds with usage', async () => {
       poster.clear()
-      const renamedName = 'perch-e2e-renamed'
-      await handleText(`rename ${childSessionId} ${renamedName}`)
-      await wait(400)
-      expect(poster.last()).toContain('Renamed')
-      const sessions = await adapter.listSessions()
-      const renamed = sessions.find(s => s.name === renamedName)
-      expect(renamed).toBeDefined()
-      // Rename back for close test — use the current ID (which may have changed for name-based adapters like zellij)
-      await adapter.renameSession(renamed!.id, CHILD_SESSION_NAME)
-      await wait(400)
-      // Re-fetch the ID after rename-back (it may have changed)
-      const sessionsAfter = await adapter.listSessions()
-      const restored = sessionsAfter.find(s => s.name === CHILD_SESSION_NAME)
-      if (restored) childSessionId = restored.id
+      await handleText('new')
+      expect(poster.last()).toContain('Usage')
     })
 
-    it('new split — splits pane', async () => {
-      poster.clear()
-      await handleText(`new split right ${testPaneId}`)
-      await wait(400)
-      expect(poster.last()).toContain('Split')
-    })
-
-    it('select — selects pane', async () => {
-      poster.clear()
-      await handleText(`select ${testPaneId}`)
-      expect(poster.last()).toContain('Selected pane')
-    })
-
-    it('close — closes session', async () => {
-      poster.clear()
-      await handleText(`close ${childSessionId}`)
-      await wait(400)
-      expect(poster.last()).toContain('Closed')
-      const sessions = await adapter.listSessions()
-      expect(sessions.find(s => s.name === CHILD_SESSION_NAME)).toBeUndefined()
+    afterAll(async () => {
+      if (childSessionId) {
+        await adapter.closeSession(childSessionId).catch(() => {})
+      }
     })
   })
 
@@ -354,21 +299,23 @@ export function registerE2ETests(provider: E2EProvider) {
   // -------------------------------------------------------------------------
 
   describe('System commands', () => {
-    it('help — shows command reference', async () => {
+    it('help — shows command reference with new command set', async () => {
       poster.clear()
       await handleText('help')
-      expect(poster.last()).toContain('Perch Commands')
-      expect(poster.last()).toContain('Terminal')
-      expect(poster.last()).toContain('Watch')
-      expect(poster.last()).toContain('Workspace')
+      const text = poster.last()
+      expect(text).toContain('Perch Commands')
+      expect(text).toContain('list')
+      expect(text).toContain('new')
+      expect(text).toContain('watch')
     })
 
     it('status — shows daemon status', async () => {
       poster.clear()
       await handleText('status')
-      expect(poster.last()).toContain(`Adapter: \`${provider.adapterName}\``)
-      expect(poster.last()).toContain('Uptime:')
-      expect(poster.last()).toContain('Plugins:')
+      const text = poster.last()
+      expect(text).toContain(`Adapter: \`${provider.adapterName}\``)
+      expect(text).toContain('Uptime:')
+      expect(text).toContain('Plugins:')
     })
   })
 
@@ -384,7 +331,7 @@ export function registerE2ETests(provider: E2EProvider) {
     beforeAll(async () => {
       const tsBefore = poster._ts
       poster.clear()
-      await handleText(`watch ${testCommandId} --preset claude`)
+      await handleText(`watch ${testCommandId}`)
       expect(watcher.listWatches()).toContain(testPaneId)
 
       const tsAfter = poster._ts
@@ -428,7 +375,7 @@ export function registerE2ETests(provider: E2EProvider) {
     ]
 
     for (const [alias, expectedKey] of keyAliasTests) {
-      it(`key alias "${alias}" �� sendKey("${expectedKey}")`, async () => {
+      it(`key alias "${alias}" → sendKey("${expectedKey}")`, async () => {
         sendKeySpy.mockClear()
         await handleText(alias, watchThreadTs)
         expect(sendKeySpy).toHaveBeenCalledWith(testPaneId, expectedKey)
@@ -437,7 +384,7 @@ export function registerE2ETests(provider: E2EProvider) {
 
     // -- Thread meta-commands --
 
-    it('keys/help in thread ��� lists all key aliases', async () => {
+    it('keys/help in thread — lists all key aliases', async () => {
       poster.clear()
       await handleText('keys', watchThreadTs)
       const response = poster.last()
@@ -466,15 +413,6 @@ export function registerE2ETests(provider: E2EProvider) {
       expect(screen).toContain('whoami')
     })
 
-    it('forwards "which npm" to pane', async () => {
-      sendTextSpy.mockClear()
-      await handleText('which npm', watchThreadTs)
-      expect(sendTextSpy).toHaveBeenCalledWith(testPaneId, 'which npm')
-      await wait(1000)
-      const screen = await adapter.readPane(testPaneId, 20)
-      expect(screen).toMatch(/npm|which/)
-    })
-
     it('forwards "echo perch-e2e-marker" and verifies in pane', async () => {
       sendTextSpy.mockClear()
       await handleText('echo perch-e2e-marker', watchThreadTs)
@@ -493,15 +431,6 @@ export function registerE2ETests(provider: E2EProvider) {
       expect(screen).toContain('/')
     })
 
-    it('forwards "date" to pane', async () => {
-      sendTextSpy.mockClear()
-      await handleText('date', watchThreadTs)
-      expect(sendTextSpy).toHaveBeenCalledWith(testPaneId, 'date')
-      await wait(1000)
-      const screen = await adapter.readPane(testPaneId, 20)
-      expect(screen).toMatch(/202\d/)
-    })
-
     // -- Unwatch from thread (must be last thread test) --
 
     it('unwatch in thread — stops watching', async () => {
@@ -513,7 +442,7 @@ export function registerE2ETests(provider: E2EProvider) {
   })
 
   // -------------------------------------------------------------------------
-  // Sad paths — invalid commands, bad args, unknown panes
+  // Sad paths
   // -------------------------------------------------------------------------
 
   describe('Sad paths', () => {
@@ -532,39 +461,6 @@ export function registerE2ETests(provider: E2EProvider) {
       expect(poster.last()).toContain('deploy')
     })
 
-    it('read — missing pane arg', async () => {
-      poster.clear()
-      await handleText('read')
-      expect(poster.last()).toContain('Usage')
-      expect(poster.last()).toContain('read')
-    })
-
-    it('send — missing text arg', async () => {
-      poster.clear()
-      await handleText(`send ${testCommandId}`)
-      expect(poster.last()).toContain('Usage')
-      expect(poster.last()).toContain('send')
-    })
-
-    it('send — missing both args', async () => {
-      poster.clear()
-      await handleText('send')
-      expect(poster.last()).toContain('Usage')
-    })
-
-    it('key — missing key arg', async () => {
-      poster.clear()
-      await handleText(`key ${testCommandId}`)
-      expect(poster.last()).toContain('Usage')
-      expect(poster.last()).toContain('key')
-    })
-
-    it('key — missing both args', async () => {
-      poster.clear()
-      await handleText('key')
-      expect(poster.last()).toContain('Usage')
-    })
-
     it('watch — missing pane arg', async () => {
       poster.clear()
       await handleText('watch')
@@ -577,68 +473,10 @@ export function registerE2ETests(provider: E2EProvider) {
       expect(poster.last()).toContain('Usage')
     })
 
-    it('new — missing subcommand', async () => {
+    it('new — missing name arg', async () => {
       poster.clear()
       await handleText('new')
       expect(poster.last()).toContain('Usage')
-    })
-
-    it('new session — missing name', async () => {
-      poster.clear()
-      await handleText('new session')
-      expect(poster.last()).toContain('Usage')
-    })
-
-    it('new split — missing args', async () => {
-      poster.clear()
-      await handleText('new split')
-      expect(poster.last()).toContain('Usage')
-    })
-
-    it('new split — missing pane', async () => {
-      poster.clear()
-      await handleText('new split right')
-      expect(poster.last()).toContain('Usage')
-    })
-
-    it('rename — missing args', async () => {
-      poster.clear()
-      await handleText('rename')
-      expect(poster.last()).toContain('Usage')
-    })
-
-    it('rename — missing new name', async () => {
-      poster.clear()
-      await handleText('rename $0')
-      expect(poster.last()).toContain('Usage')
-    })
-
-    it('close — missing target', async () => {
-      poster.clear()
-      await handleText('close')
-      expect(poster.last()).toContain('Usage')
-    })
-
-    it('select — missing pane', async () => {
-      poster.clear()
-      await handleText('select')
-      expect(poster.last()).toContain('Usage')
-    })
-
-    it('tree — non-existent session name', async () => {
-      poster.clear()
-      await handleText('tree nonexistent-session-xyz')
-      expect(poster.last()).toContain('not found')
-    })
-
-    it('watch — unknown preset', async () => {
-      poster.clear()
-      await handleText(`watch ${testCommandId} --preset nonexistent`)
-      // Should fall back to default plugin, not crash
-      const allText = poster.messages.map(m => m.text).join('\n')
-      expect(allText).toContain('Watching')
-      // Clean up
-      watcher.unwatch(testPaneId)
     })
 
     it('empty message — no response', async () => {
@@ -662,7 +500,9 @@ export function registerE2ETests(provider: E2EProvider) {
     it('case insensitivity — "LIST" works like "list"', async () => {
       poster.clear()
       await handleText('LIST')
-      expect(poster.last()).toContain(TEST_SESSION_NAME)
+      const text = poster.last()
+      const valid = text.includes('No active Claude sessions') || text.includes('*Claude sessions:*')
+      expect(valid, `Unexpected LIST response: ${text}`).toBe(true)
     })
   })
 }

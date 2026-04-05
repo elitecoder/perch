@@ -147,6 +147,21 @@ export class TmuxAdapter implements ITerminalAdapter {
     await execa('tmux', ['select-pane', '-t', tmuxTarget])
   }
 
+  async getPanePid(paneId: string): Promise<number | null> {
+    try {
+      const tmuxTarget = this._toTmuxTarget(paneId)
+      const { stdout } = await execa('tmux', [
+        'display-message',
+        '-t', tmuxTarget,
+        '-p', '#{pane_pid}',
+      ])
+      const pid = parseInt(stdout.trim(), 10)
+      return isNaN(pid) ? null : pid
+    } catch {
+      return null
+    }
+  }
+
   /** Convert a perch pane id "tmux:session:window:pane" → tmux target "pane" */
   private _toTmuxTarget(paneId: string): string {
     const parts = paneId.split(':')

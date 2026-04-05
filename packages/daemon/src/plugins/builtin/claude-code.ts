@@ -88,8 +88,8 @@ export class ClaudeCodePlugin implements IToolPlugin {
   }
 
   keyAliases: Record<string, string> = {
-    accept: 'y',
-    reject: 'n',
+    accept: 'Enter',
+    reject: 'Escape',
     interrupt: 'C-c',
     expand: 'C-o',
     esc: 'Escape',

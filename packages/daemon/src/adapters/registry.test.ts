@@ -14,13 +14,6 @@ vi.mock('./cmux.js', () => ({
   })),
 }))
 
-vi.mock('./zellij.js', () => ({
-  ZellijAdapter: vi.fn().mockImplementation(() => ({
-    name: 'zellij',
-    isAvailable: vi.fn().mockResolvedValue(false),
-  })),
-}))
-
 import { detectAdapter, getAdapters } from './registry.js'
 
 describe('AdapterRegistry', () => {
@@ -51,12 +44,6 @@ describe('AdapterRegistry', () => {
           isAvailable: vi.fn().mockResolvedValue(false),
         })),
       }))
-      vi.doMock('./zellij.js', () => ({
-        ZellijAdapter: vi.fn().mockImplementation(() => ({
-          name: 'zellij',
-          isAvailable: vi.fn().mockResolvedValue(false),
-        })),
-      }))
 
       const { detectAdapter: freshDetect } = await import('./registry.js')
       const adapter = await freshDetect()
@@ -75,12 +62,6 @@ describe('AdapterRegistry', () => {
       vi.doMock('./cmux.js', () => ({
         CmuxAdapter: vi.fn().mockImplementation(() => ({
           name: 'cmux',
-          isAvailable: vi.fn().mockResolvedValue(false),
-        })),
-      }))
-      vi.doMock('./zellij.js', () => ({
-        ZellijAdapter: vi.fn().mockImplementation(() => ({
-          name: 'zellij',
           isAvailable: vi.fn().mockResolvedValue(false),
         })),
       }))

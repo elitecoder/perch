@@ -4,6 +4,11 @@ import type { WatcherManager } from '../watcher/manager.js'
 import type { Poster } from '../slack/poster.js'
 import type { CommandHandler } from './router.js'
 import { readConfig, writeConfig, readState, writeState } from '../config.js'
+import { resolveClaudeSession } from '../transcript/resolver.js'
+
+function shortId(paneId: string): string {
+  return paneId.match(/:(\d+)$/)?.[1] ?? paneId.match(/%(\d+)$/)?.[1] ?? paneId
+}
 
 export function makeWatchHandlers(
   adapter: ITerminalAdapter,
@@ -53,9 +58,18 @@ export function makeWatchHandlers(
       ? `\nKeys: ${keyNames.map(k => `\`${k}\``).join(', ')}\nType \`unwatch\` to stop.`
       : ''
     const { ts } = await poster.post(
-      `:eyes: Watching \`${paneId}\` with *${plugin.displayName}* — replies here will be forwarded to the pane.${keysHint}`
+      `:eyes: Watching \`${shortId(paneId)}\` with *${plugin.displayName}* — replies here will be forwarded to the pane.${keysHint}`
     )
-    watcher.watch(paneId, adapter, plugin, poster.makeLiveView(ts), ts)
+
+    // Always use JSONL transcript monitoring
+    const resolved = await resolveClaudeSession(paneId, adapter)
+    if (!resolved) {
+      await poster.postToThread(ts, ':warning: Could not locate Claude Code session file — is `claude` running in this pane?')
+      // Still register for thread-based key aliases and text forwarding
+      watcher.registerWatch(paneId, ts, plugin)
+    } else {
+      await watcher.watchTranscript(paneId, resolved.jsonlPath, poster, ts, plugin, true, resolved.pid)
+    }
     const state = readState()
     if (!state.watches.includes(paneId)) {
       writeState({ ...state, watches: [...state.watches, paneId] })
@@ -72,7 +86,7 @@ export function makeWatchHandlers(
     watcher.unwatch(paneId)
     const state = readState()
     writeState({ ...state, watches: state.watches.filter(id => id !== paneId) })
-    await respond(`:white_check_mark: Stopped watching \`${paneId}\``)
+    await respond(`:white_check_mark: Stopped watching \`${shortId(paneId)}\``)
   }
 
   const watching: CommandHandler = async (_args, respond) => {
@@ -81,7 +95,7 @@ export function makeWatchHandlers(
       await respond('No panes currently being watched.')
       return
     }
-    await respond('*Watching:*\n' + list.map(id => `• \`${id}\``).join('\n'))
+    await respond('*Watching:*\n' + list.map(id => `• \`${shortId(id)}\``).join('\n'))
   }
 
   const preset: CommandHandler = async (args, respond) => {

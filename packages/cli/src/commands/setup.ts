@@ -1,5 +1,6 @@
 import { input, select, confirm } from '@inquirer/prompts'
 import { execa } from 'execa'
+import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs'
 import { homedir } from 'os'
 import { join, dirname } from 'path'
 import { fileURLToPath } from 'url'
@@ -8,7 +9,7 @@ import { detectMultiplexers, installInstructions } from '../detector.js'
 import { validateBotToken, validateAppToken, validateChannel } from '../validator.js'
 import { getSecret, setSecret } from '../keychain.js'
 import { install, resolveNodePath } from '../launchagent.js'
-import { writeConfig, readConfig } from '@perch-dev/shared/config'
+import { writeConfig, readConfig, CONFIG_DIR } from '@perch-dev/shared/config'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 
@@ -23,7 +24,7 @@ const SLACK_MANIFEST = JSON.stringify({
       bot_events: ['message.channels', 'message.groups', 'message.im', 'app_mention'],
     },
   },
-  oauth_config: { scopes: { bot: ['app_mentions:read', 'chat:write', 'channels:read', 'groups:read', 'channels:history', 'groups:history', 'im:history', 'im:read', 'im:write'] } },
+  oauth_config: { scopes: { bot: ['app_mentions:read', 'chat:write', 'channels:read', 'groups:read', 'channels:history', 'groups:history', 'im:history', 'im:read', 'im:write', 'files:write'] } },
   features: { bot_user: { display_name: 'perch', always_online: false } },
 }, null, 2)
 
@@ -43,6 +44,101 @@ async function validateCmuxConnection(): Promise<boolean> {
     return true
   } catch {
     return false
+  }
+}
+
+const CLAUDE_SETTINGS_PATH = join(homedir(), '.claude', 'settings.json')
+const HOOKS_DIR = join(CONFIG_DIR, 'hooks')
+const WAITING_DIR = join(CONFIG_DIR, 'waiting')
+const PERCH_HOOK_MARKER = 'perch-managed'
+
+/** Source hook scripts (relative to CLI package). */
+const HOOK_SOURCES = join(__dirname, '../../../hooks')
+
+function perchHookEntries(): Record<string, Array<Record<string, unknown>>> {
+  return {
+    PermissionRequest: [{
+      matcher: '',
+      hooks: [{
+        type: 'command',
+        command: `sh "${join(HOOKS_DIR, 'permission-request.sh')}"`,
+        timeout: 5,
+        _perch: PERCH_HOOK_MARKER,
+      }],
+    }],
+    PostToolUse: [{
+      matcher: '',
+      hooks: [{
+        type: 'command',
+        command: `sh "${join(HOOKS_DIR, 'post-tool-use.sh')}"`,
+        timeout: 5,
+        _perch: PERCH_HOOK_MARKER,
+      }],
+    }],
+    PostToolUseFailure: [{
+      matcher: '',
+      hooks: [{
+        type: 'command',
+        command: `sh "${join(HOOKS_DIR, 'post-tool-use.sh')}"`,
+        timeout: 5,
+        _perch: PERCH_HOOK_MARKER,
+      }],
+    }],
+  }
+}
+
+function isPerchHookEntry(entry: Record<string, unknown>): boolean {
+  const hooks = entry.hooks as Array<Record<string, unknown>> | undefined
+  return hooks?.some(h => h._perch === PERCH_HOOK_MARKER) ?? false
+}
+
+async function installClaudeHooks(): Promise<void> {
+  // Copy hook scripts to ~/.config/perch/hooks/
+  mkdirSync(HOOKS_DIR, { recursive: true })
+  mkdirSync(WAITING_DIR, { recursive: true })
+  for (const name of ['permission-request.sh', 'post-tool-use.sh']) {
+    const src = join(HOOK_SOURCES, name)
+    const dst = join(HOOKS_DIR, name)
+    writeFileSync(dst, readFileSync(src, 'utf-8'), { mode: 0o755 })
+  }
+
+  // Register hooks in ~/.claude/settings.json
+  let settings: Record<string, unknown> = {}
+  if (existsSync(CLAUDE_SETTINGS_PATH)) {
+    settings = JSON.parse(readFileSync(CLAUDE_SETTINGS_PATH, 'utf-8'))
+  }
+
+  const hooks = (settings.hooks ?? {}) as Record<string, unknown[]>
+  for (const [hookName, hookEntries] of Object.entries(perchHookEntries())) {
+    const existing = (hooks[hookName] ?? []) as Array<Record<string, unknown>>
+    const cleaned = existing.filter(entry => !isPerchHookEntry(entry))
+    hooks[hookName] = [...cleaned, ...hookEntries]
+  }
+
+  settings.hooks = hooks
+  writeFileSync(CLAUDE_SETTINGS_PATH, JSON.stringify(settings, null, 2), 'utf-8')
+}
+
+export function removeClaudeHooks(): void {
+  if (!existsSync(CLAUDE_SETTINGS_PATH)) return
+  try {
+    const settings = JSON.parse(readFileSync(CLAUDE_SETTINGS_PATH, 'utf-8')) as Record<string, unknown>
+    const hooks = (settings.hooks ?? {}) as Record<string, unknown[]>
+    let changed = false
+    for (const hookName of Object.keys(perchHookEntries())) {
+      const existing = (hooks[hookName] ?? []) as Array<Record<string, unknown>>
+      const cleaned = existing.filter(entry => !isPerchHookEntry(entry))
+      if (cleaned.length !== existing.length) {
+        hooks[hookName] = cleaned
+        changed = true
+      }
+    }
+    if (changed) {
+      settings.hooks = hooks
+      writeFileSync(CLAUDE_SETTINGS_PATH, JSON.stringify(settings, null, 2), 'utf-8')
+    }
+  } catch {
+    // best effort
   }
 }
 
@@ -145,8 +241,19 @@ export async function runSetup(): Promise<void> {
   const config = readConfig()
   writeConfig({ ...config, slackChannelId: channelId, adapterPriority: [multiplexerId, ...config.adapterPriority.filter(a => a !== multiplexerId)] })
 
-  // Step 5: LaunchAgent install
-  ui.step(5, 'Installing LaunchAgent')
+  // Step 5: Claude Code hooks
+  ui.step(5, 'Installing Claude Code hooks')
+  const hooksSpinner = ui.spinner('Configuring Claude Code hooks...').start()
+  try {
+    await installClaudeHooks()
+    hooksSpinner.succeed('Claude Code hooks installed')
+  } catch (err) {
+    hooksSpinner.fail(`Could not install Claude Code hooks: ${err instanceof Error ? err.message : err}`)
+    ui.info('  Perch will still work, but won\'t detect permission prompts.')
+  }
+
+  // Step 6: LaunchAgent install
+  ui.step(6, 'Installing LaunchAgent')
   const nodePath = await resolveNodePath()
   const daemonPath = join(__dirname, '../../daemon/dist/index.js')
 
@@ -154,7 +261,7 @@ export async function runSetup(): Promise<void> {
   await install({ nodePath, daemonPath })
   spinner.succeed('LaunchAgent installed and started')
 
-  // Step 6: Summary
+  // Step 7: Summary
   ui.header('Setup Complete!')
   ui.success(`Multiplexer: ${multiplexerId}`)
   ui.success(`Channel: ${channelId}`)

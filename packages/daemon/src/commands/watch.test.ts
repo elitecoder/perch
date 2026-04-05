@@ -38,6 +38,7 @@ function makeDeps() {
 
   const watcher: WatcherManager = {
     watch: vi.fn(),
+    watchTranscript: vi.fn().mockResolvedValue(undefined),
     unwatch: vi.fn(),
     listWatches: vi.fn().mockReturnValue([]),
     dispose: vi.fn(),
@@ -85,10 +86,11 @@ describe('watch command handlers', () => {
       const postText = vi.mocked(deps.poster.post).mock.calls[0]![0] as string
       expect(postText).toContain('Watching')
       expect(postText).toContain('%0')
-      expect(deps.watcher.watch).toHaveBeenCalledWith('%0', deps.adapter, deps.plugin, deps.mockLiveView, '12345.678')
+      // JSONL path: watcher.watch (scraping) is NOT called; watchTranscript or warning is used
+      expect(deps.watcher.watch).not.toHaveBeenCalled()
     })
 
-    it('respects --preset flag', async () => {
+    it('uses watchTranscript for claude preset when session resolves', async () => {
       const claudePlugin: IToolPlugin = {
         id: 'claude',
         displayName: 'Claude Code',
@@ -100,8 +102,10 @@ describe('watch command handlers', () => {
         watch: { pollIntervalMs: 1500, notifyOnTransitions: [], suppressPatterns: [] },
       } as unknown as IToolPlugin
       const h = makeWatchHandlers(deps.adapter, [claudePlugin, deps.plugin], deps.watcher, deps.poster, async (id) => id)
+      // With no getPanePid on the adapter, resolveClaudeSession returns null → warning posted
       await h.watch(['%0', '--preset', 'claude'], respond)
-      expect(deps.watcher.watch).toHaveBeenCalledWith('%0', deps.adapter, claudePlugin, deps.mockLiveView, '12345.678')
+      // Should NOT call scraping watch for claude
+      expect(deps.watcher.watch).not.toHaveBeenCalledWith('%0', deps.adapter, claudePlugin, expect.anything(), expect.anything())
     })
   })
 

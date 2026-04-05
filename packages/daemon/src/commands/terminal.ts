@@ -1,15 +1,7 @@
-import type { ITerminalAdapter, Pane, Session } from '../adapters/interface.js'
+import type { ITerminalAdapter, Pane } from '../adapters/interface.js'
+import type { WatcherManager } from '../watcher/manager.js'
 import type { CommandHandler } from './router.js'
-
-function formatSession(s: Session): string {
-  const windowLines = s.windows.map(w => {
-    const paneLines = w.panes.map(
-      p => `      • \`${shortId(p)}\`${p.active ? ' (active)' : ''}: ${p.command}`
-    )
-    return [`    *${s.name}*`, ...paneLines].join('\n')
-  })
-  return windowLines.join('\n')
-}
+import { findClaudePanes } from '../transcript/claude-finder.js'
 
 function shortId(p: Pane): string {
   // Extract the last numeric part — surface number for cmux, pane index for tmux
@@ -34,49 +26,34 @@ async function resolvePane(adapter: ITerminalAdapter, input: string): Promise<st
   return input
 }
 
-export function makeTerminalHandlers(adapter: ITerminalAdapter): Record<string, CommandHandler> {
+function shortIdFromPaneId(paneId: string): string {
+  // cmux: cmux:workspace:1:surface:5 → "5"
+  const numericTail = paneId.match(/:(\d+)$/)
+  if (numericTail) return numericTail[1]!
+  // tmux: tmux:work:@0:%3 → "3"
+  const tmuxPane = paneId.match(/%(\d+)$/)
+  if (tmuxPane) return tmuxPane[1]!
+  return paneId
+}
+
+export function makeTerminalHandlers(
+  adapter: ITerminalAdapter,
+  watcher: WatcherManager,
+): Record<string, CommandHandler> {
   const list: CommandHandler = async (_args, respond) => {
-    const sessions = await adapter.listSessions()
-    if (sessions.length === 0) {
-      await respond('No active sessions.')
+    const claudePanes = await findClaudePanes(adapter)
+    if (claudePanes.length === 0) {
+      await respond('No active Claude sessions.')
       return
     }
-    await respond(sessions.map(formatSession).join('\n\n'))
+    const watching = watcher.listWatches()
+    const lines = claudePanes.map(p => {
+      const id = shortIdFromPaneId(p.paneId)
+      const watchedMark = watching.includes(p.paneId) ? ' 👀 watching' : ''
+      return `  • *${p.sessionName}*    \`${id}\`${watchedMark}`
+    })
+    await respond('*Claude sessions:*\n' + lines.join('\n'))
   }
 
-  const tree: CommandHandler = async (args, respond) => {
-    const sessions = await adapter.listSessions()
-    const target = args[0]
-    const filtered = target ? sessions.filter(s => s.name === target || s.id === target) : sessions
-    if (filtered.length === 0) {
-      await respond(target ? `Session \`${target}\` not found.` : 'No active sessions.')
-      return
-    }
-    await respond(filtered.map(formatSession).join('\n\n'))
-  }
-
-  const read: CommandHandler = async (args, respond) => {
-    if (!args[0]) { await respond('Usage: `read <pane> [lines]`'); return }
-    const paneId = await resolvePane(adapter, args[0])
-    const lines = args[1] ? parseInt(args[1], 10) : 50
-    const content = await adapter.readPane(paneId, lines)
-    await respond('```\n' + (content.trim() || '(empty)') + '\n```')
-  }
-
-  const send: CommandHandler = async (args, respond) => {
-    const text = args.slice(1).join(' ')
-    if (!args[0] || !text) { await respond('Usage: `send <pane> <text>`'); return }
-    const paneId = await resolvePane(adapter, args[0])
-    await adapter.sendText(paneId, text)
-    await respond(`:white_check_mark: Sent to \`${args[0]}\``)
-  }
-
-  const key: CommandHandler = async (args, respond) => {
-    if (!args[0] || !args[1]) { await respond('Usage: `key <pane> <key>`'); return }
-    const paneId = await resolvePane(adapter, args[0])
-    await adapter.sendKey(paneId, args[1])
-    await respond(`:white_check_mark: Sent key \`${args[1]}\` to \`${args[0]}\``)
-  }
-
-  return { list, tree, read, send, key, resolvePane: (input: string) => resolvePane(adapter, input) }
+  return { list, resolvePane: (input: string) => resolvePane(adapter, input) }
 }

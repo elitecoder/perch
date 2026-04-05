@@ -106,8 +106,10 @@ export class CmuxAdapter implements ITerminalAdapter {
 
   async sendText(paneId: string, text: string): Promise<void> {
     const { surface } = this._parsePaneId(paneId)
-    // cmux send treats \n as Enter
-    await cmux(['send', '--surface', surface, `${text}\\n`])
+    // Send text first, then Enter separately — some TUIs (Claude Code)
+    // don't process Enter correctly when it's inlined via \n in a paste.
+    await cmux(['send', '--surface', surface, text])
+    await cmux(['send-key', '--surface', surface, 'enter'])
   }
 
   async sendKey(paneId: string, key: string): Promise<void> {
@@ -157,6 +159,40 @@ export class CmuxAdapter implements ITerminalAdapter {
     await cmux(['focus-surface', '--surface', surface]).catch(() => {
       // focus-surface may not exist in all versions; best-effort
     })
+  }
+
+  async getPanePid(paneId: string): Promise<number | null> {
+    try {
+      const { workspace, surface } = this._parsePaneId(paneId)
+      const tty = await this._getSurfaceTty(workspace || undefined, surface)
+      if (!tty) return null
+      // Find the login shell on this TTY — login shells have a leading '-' in argv[0]
+      const { stdout } = await execa('ps', ['-t', tty, '-o', 'pid=,args='])
+      for (const line of stdout.split('\n')) {
+        const parts = line.trim().split(/\s+/)
+        const pid = parseInt(parts[0]!, 10)
+        const args = parts[1] ?? ''
+        if (!isNaN(pid) && args.startsWith('-/')) return pid
+      }
+      return null
+    } catch {
+      return null
+    }
+  }
+
+  private async _getSurfaceTty(workspace: string | undefined, surface: string): Promise<string | null> {
+    try {
+      const args = ['tree']
+      if (workspace) args.push('--workspace', workspace)
+      else args.push('--all')
+      const { stdout } = await cmux(args)
+      // Line format: surface surface:5 [terminal] "title" tty=ttys001
+      const escaped = surface.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+      const match = stdout.match(new RegExp(`${escaped}.*?tty=(\\S+)`))
+      return match?.[1] ?? null
+    } catch {
+      return null
+    }
   }
 
   private _parsePaneId(paneId: string): { workspace: string; surface: string } {

@@ -1,12 +1,10 @@
 import type { ITerminalAdapter } from './interface.js'
 import { TmuxAdapter } from './tmux.js'
-import { ZellijAdapter } from './zellij.js'
 import { CmuxAdapter } from './cmux.js'
 
 const ALL_ADAPTERS: ITerminalAdapter[] = [
   new CmuxAdapter(),
   new TmuxAdapter(),
-  new ZellijAdapter(),
 ]
 
 export async function detectAdapter(priority?: string[]): Promise<ITerminalAdapter> {

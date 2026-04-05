@@ -1,21 +1,13 @@
 {
   "display_information": {
     "name": "Perch",
-    "description": "Remote control your terminal sessions from Slack",
+    "description": "Remote control your Claude sessions from Slack",
     "background_color": "#1a1a2e"
   },
-  "settings": {
-    "socket_mode_enabled": true,
-    "org_deploy_enabled": false,
-    "is_hosted": false,
-    "token_rotation_enabled": false,
-    "event_subscriptions": {
-      "bot_events": [
-        "message.channels",
-        "message.groups",
-        "message.im",
-        "app_mention"
-      ]
+  "features": {
+    "bot_user": {
+      "display_name": "perch",
+      "always_online": false
     }
   },
   "oauth_config": {
@@ -29,14 +21,26 @@
         "groups:history",
         "im:history",
         "im:read",
-        "im:write"
+        "im:write",
+        "files:read",
+        "files:write"
       ]
     }
   },
-  "features": {
-    "bot_user": {
-      "display_name": "perch",
-      "always_online": false
-    }
+  "settings": {
+    "event_subscriptions": {
+      "bot_events": [
+        "message.channels",
+        "message.groups",
+        "message.im",
+        "app_mention"
+      ]
+    },
+    "interactivity": {
+      "is_enabled": true
+    },
+    "org_deploy_enabled": false,
+    "socket_mode_enabled": true,
+    "token_rotation_enabled": false
   }
 }

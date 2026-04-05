@@ -30,10 +30,10 @@ describe('detectMultiplexers', () => {
     expect(found).toHaveLength(0)
   })
 
-  it('respects priority order (tmux before zellij)', async () => {
+  it('returns both tmux and cmux when both installed', async () => {
     mockExeca.mockImplementation((_cmd, args) => {
       const target = (args as string[])[0]
-      if (target === 'tmux' || target === 'zellij') {
+      if (target === 'tmux' || target === 'cmux') {
         return Promise.resolve({ stdout: `/usr/bin/${target}` }) as never
       }
       return Promise.reject(new Error('not found')) as never
@@ -41,7 +41,7 @@ describe('detectMultiplexers', () => {
 
     const found = await detectMultiplexers()
     expect(found[0]?.id).toBe('tmux')
-    expect(found[1]?.id).toBe('zellij')
+    expect(found[1]?.id).toBe('cmux')
   })
 
   it('detects cmux via fallback path when not in PATH', async () => {

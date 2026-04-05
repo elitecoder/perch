@@ -1,0 +1,163 @@
+import { describe, expect, it, beforeEach } from 'vitest'
+import { ConversationalFormatter, toSlackMrkdwn } from './formatter.js'
+import type { AssistantRecord, UserRecord, TranscriptRecord } from './types.js'
+
+function makeAssistant(
+  content: AssistantRecord['message']['content'],
+  stop_reason: AssistantRecord['message']['stop_reason'] = 'end_turn',
+): AssistantRecord {
+  return {
+    type: 'assistant',
+    uuid: 'test-uuid',
+    isSidechain: false,
+    message: {
+      model: 'claude-sonnet-4-6',
+      id: 'msg_test',
+      role: 'assistant',
+      content,
+      stop_reason,
+    },
+  }
+}
+
+function makeUser(content: UserRecord['message']['content']): UserRecord {
+  return {
+    type: 'user',
+    uuid: 'user-uuid',
+    isSidechain: false,
+    message: { role: 'user', content },
+  }
+}
+
+describe('ConversationalFormatter', () => {
+  let fmt: ConversationalFormatter
+
+  beforeEach(() => {
+    fmt = new ConversationalFormatter()
+  })
+
+  it('emits post_response for final assistant text (end_turn)', () => {
+    const actions = fmt.processRecords([
+      makeAssistant([{ type: 'text', text: 'Hello!' }], 'end_turn'),
+    ])
+    expect(actions).toHaveLength(1)
+    expect(actions[0]).toEqual({ type: 'post_response', text: 'Hello!' })
+  })
+
+  it('emits post_response with cursor for mid-turn text (streaming chunk)', () => {
+    const actions = fmt.processRecords([
+      makeAssistant([{ type: 'text', text: 'Thinking...' }], 'tool_use'),
+    ])
+    expect(actions).toHaveLength(1)
+    expect(actions[0]!.type).toBe('post_response')
+    expect(actions[0]!.text).toContain('▌')
+  })
+
+  it('emits update_response for subsequent streaming chunks', () => {
+    // First chunk
+    fmt.processRecords([makeAssistant([{ type: 'text', text: 'Hello' }], 'tool_use')])
+    // Second chunk
+    const actions = fmt.processRecords([makeAssistant([{ type: 'text', text: 'Hello world' }], 'tool_use')])
+    expect(actions[0]!.type).toBe('update_response')
+    expect(actions[0]!.text).toContain('▌')
+  })
+
+  it('emits update_response without cursor for end_turn', () => {
+    fmt.processRecords([makeAssistant([{ type: 'text', text: 'Hello' }], 'tool_use')])
+    const actions = fmt.processRecords([makeAssistant([{ type: 'text', text: 'Hello world' }], 'end_turn')])
+    expect(actions[0]!.type).toBe('update_response')
+    expect(actions[0]!.text).not.toContain('▌')
+  })
+
+  it('emits update_status for tool calls', () => {
+    const actions = fmt.processRecords([
+      makeAssistant([{ type: 'tool_use', id: 't1', name: 'Read', input: { file_path: '/src/auth.ts' } }], 'tool_use'),
+    ])
+    expect(actions).toHaveLength(1)
+    expect(actions[0]!.type).toBe('update_status')
+    expect(actions[0]!.text).toContain('auth.ts')
+  })
+
+  it('batches consecutive tool calls into one status message', () => {
+    const actions = fmt.processRecords([
+      makeAssistant([
+        { type: 'tool_use', id: 't1', name: 'Read', input: { file_path: '/a.ts' } },
+        { type: 'tool_use', id: 't2', name: 'Grep', input: { pattern: 'foo' } },
+      ], 'tool_use'),
+    ])
+    // Only one update_status, containing both
+    const statuses = actions.filter(a => a.type === 'update_status')
+    expect(statuses).toHaveLength(1)
+    expect(statuses[0]!.text).toContain('a.ts')
+    expect(statuses[0]!.text).toContain('foo')
+  })
+
+  it('skips thinking blocks', () => {
+    const actions = fmt.processRecords([
+      makeAssistant([{ type: 'thinking', thinking: 'internal reasoning' }], 'end_turn'),
+    ])
+    expect(actions).toHaveLength(0)
+  })
+
+  it('skips sidechain records', () => {
+    const record: TranscriptRecord = {
+      ...makeAssistant([{ type: 'text', text: 'subagent work' }], 'end_turn'),
+      isSidechain: true,
+    }
+    expect(fmt.processRecords([record])).toHaveLength(0)
+  })
+
+  it('emits post_user for plain user text', () => {
+    const actions = fmt.processRecords([makeUser('fix the bug')])
+    expect(actions).toHaveLength(1)
+    expect(actions[0]!.type).toBe('post_user')
+    expect(actions[0]!.text).toContain('fix the bug')
+  })
+
+  it('emits warning for failed tool results', () => {
+    const actions = fmt.processRecords([
+      makeUser([{ type: 'tool_result', tool_use_id: 't1', is_error: true }]),
+    ])
+    expect(actions).toHaveLength(1)
+    expect(actions[0]!.text).toContain('failed')
+  })
+
+  it('silently ignores successful tool results', () => {
+    const actions = fmt.processRecords([
+      makeUser([{ type: 'tool_result', tool_use_id: 't1', is_error: false, content: 'ok' }]),
+    ])
+    expect(actions).toHaveLength(0)
+  })
+
+  it('clears pending tools after end_turn', () => {
+    fmt.processRecords([
+      makeAssistant([{ type: 'tool_use', id: 't1', name: 'Read', input: { file_path: '/a.ts' } }], 'tool_use'),
+    ])
+    const actions = fmt.processRecords([
+      makeAssistant([{ type: 'text', text: 'Done!' }], 'end_turn'),
+    ])
+    expect(actions.find(a => a.type === 'post_response')?.text).toBe('Done!')
+  })
+})
+
+describe('toSlackMrkdwn', () => {
+  it('converts **bold** to *bold*', () => {
+    expect(toSlackMrkdwn('**hello**')).toBe('*hello*')
+  })
+
+  it('converts [text](url) to <url|text>', () => {
+    expect(toSlackMrkdwn('[Perch](https://example.com)')).toBe('<https://example.com|Perch>')
+  })
+
+  it('converts # Heading to *Heading*', () => {
+    expect(toSlackMrkdwn('# My Title')).toBe('*My Title*')
+  })
+
+  it('converts ~~strike~~ to ~strike~', () => {
+    expect(toSlackMrkdwn('~~foo~~')).toBe('~foo~')
+  })
+
+  it('leaves inline code untouched', () => {
+    expect(toSlackMrkdwn('use `pnpm test`')).toBe('use `pnpm test`')
+  })
+})

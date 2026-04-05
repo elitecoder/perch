@@ -150,12 +150,17 @@ describe('CmuxAdapter', () => {
   })
 
   describe('sendText', () => {
-    it('sends text with \\n appended', async () => {
+    it('sends text then enter separately', async () => {
       mockOutput('')
       await adapter.sendText('cmux:workspace:1:surface:5', 'echo hello')
       expect(mockExeca).toHaveBeenCalledWith(
         expect.stringContaining('cmux'),
-        ['send', '--surface', 'surface:5', 'echo hello\\n'],
+        ['send', '--surface', 'surface:5', 'echo hello'],
+        expect.any(Object),
+      )
+      expect(mockExeca).toHaveBeenCalledWith(
+        expect.stringContaining('cmux'),
+        ['send-key', '--surface', 'surface:5', 'enter'],
         expect.any(Object),
       )
     })

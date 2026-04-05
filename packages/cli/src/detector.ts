@@ -9,7 +9,6 @@ export interface MultiplexerInfo {
 
 const MULTIPLEXERS: MultiplexerInfo[] = [
   { id: 'tmux', displayName: 'tmux', command: 'tmux' },
-  { id: 'zellij', displayName: 'Zellij', command: 'zellij' },
   { id: 'cmux', displayName: 'cmux', command: 'cmux' },
 ]
 
@@ -42,7 +41,33 @@ export async function detectMultiplexers(): Promise<MultiplexerInfo[]> {
 export function installInstructions(id: string): string {
   const instructions: Record<string, string> = {
     tmux: 'brew install tmux',
-    zellij: 'brew install zellij',
   }
   return instructions[id] ?? `Install ${id} via your package manager`
+}
+
+export interface ClaudeCodeInfo {
+  installed: boolean
+  version?: string
+  authenticated?: boolean
+}
+
+export async function detectClaudeCode(): Promise<ClaudeCodeInfo> {
+  // Check if installed
+  let version: string | undefined
+  try {
+    const { stdout } = await execa('claude', ['--version'])
+    version = stdout.trim()
+  } catch {
+    return { installed: false }
+  }
+
+  // Verify auth by running a minimal prompt with a short timeout
+  try {
+    await execa('claude', ['-p', 'hi', '--output-format', 'text'], {
+      timeout: 20_000,
+    })
+    return { installed: true, version, authenticated: true }
+  } catch {
+    return { installed: true, version, authenticated: false }
+  }
 }

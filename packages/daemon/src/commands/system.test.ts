@@ -47,22 +47,17 @@ describe('system command handlers', () => {
   })
 
   describe('help', () => {
-    it('includes all command categories', async () => {
+    it('includes Perch Commands header', async () => {
       await handlers.help([], respond)
       const text = respond.mock.calls[0]![0] as string
       expect(text).toContain('*Perch Commands*')
-      expect(text).toContain('*Terminal*')
-      expect(text).toContain('*Watch*')
-      expect(text).toContain('*Workspace*')
-      expect(text).toContain('*System*')
     })
 
-    it('documents list, tree, read, send, key commands', async () => {
+    it('documents list and new commands', async () => {
       await handlers.help([], respond)
       const text = respond.mock.calls[0]![0] as string
-      for (const cmd of ['list', 'tree', 'read', 'send', 'key']) {
-        expect(text).toContain(`\`${cmd}`)
-      }
+      expect(text).toContain('`list`')
+      expect(text).toContain('`new')
     })
 
     it('documents watch, unwatch, watching commands', async () => {
@@ -71,16 +66,6 @@ describe('system command handlers', () => {
       expect(text).toContain('`watch')
       expect(text).toContain('`unwatch')
       expect(text).toContain('`watching`')
-    })
-
-    it('documents workspace commands', async () => {
-      await handlers.help([], respond)
-      const text = respond.mock.calls[0]![0] as string
-      expect(text).toContain('`new session')
-      expect(text).toContain('`new split')
-      expect(text).toContain('`rename')
-      expect(text).toContain('`close')
-      expect(text).toContain('`select')
     })
 
     it('documents system commands', async () => {
@@ -109,7 +94,6 @@ describe('system command handlers', () => {
       await handlers.status([], respond)
       const text = respond.mock.calls[0]![0] as string
       expect(text).toMatch(/Uptime: \d+s/)
-      // Should be approximately 60, but allow 58-62 for test timing
       const uptimeMatch = text.match(/Uptime: (\d+)s/)
       expect(Number(uptimeMatch![1])).toBeGreaterThanOrEqual(58)
     })

@@ -1,10 +1,10 @@
 import keytar from 'keytar'
 import { detectAdapter } from './adapters/registry.js'
 import { ClaudeCodePlugin } from './plugins/builtin/claude-code.js'
-import { GenericPlugin } from './plugins/builtin/generic.js'
 import { WatcherManager } from './watcher/manager.js'
 import { createSocketApp } from './slack/socket.js'
 import { readConfig, readState, writeState, ensureConfigDir } from './config.js'
+import { resolveClaudeSession } from './transcript/resolver.js'
 
 const KEYCHAIN_SERVICE = 'dev.perch'
 
@@ -26,7 +26,7 @@ async function main() {
   }
 
   const adapter = await detectAdapter(config.adapterPriority)
-  const plugins = [new ClaudeCodePlugin(), new GenericPlugin()]
+  const plugins = [new ClaudeCodePlugin()]
   const watcher = new WatcherManager()
 
   const { app, poster } = createSocketApp({
@@ -58,7 +58,13 @@ async function main() {
         plugins.find(p => p.detect(initialContent)) ??
         plugins[plugins.length - 1]!
       const { ts } = await poster.post(`:eyes: Resumed watching \`${paneId}\` with *${plugin.displayName}*`)
-      watcher.watch(paneId, adapter, plugin, poster.makeLiveView(ts), ts)
+
+      const resolved = await resolveClaudeSession(paneId, adapter)
+      if (resolved) {
+        watcher.watchTranscript(paneId, resolved.jsonlPath, poster, ts, plugin, true, resolved.pid)
+      } else {
+        await poster.postToThread(ts, ':warning: Could not locate Claude Code session file — is `claude` still running in this pane?')
+      }
       resumed.push(paneId)
     } catch (err) {
       console.error(`Perch: failed to resume watch for ${paneId}:`, err)
@@ -90,7 +96,6 @@ export { detectAdapter, getAdapters } from './adapters/registry.js'
 export type { ITerminalAdapter, Session, Window, Pane } from './adapters/interface.js'
 export type { IToolPlugin, ToolState, ContentDelta } from './plugins/interface.js'
 export { ClaudeCodePlugin } from './plugins/builtin/claude-code.js'
-export { GenericPlugin } from './plugins/builtin/generic.js'
 export { WatcherManager } from './watcher/manager.js'
 export { CommandRouter } from './commands/router.js'
 export { Poster } from './slack/poster.js'

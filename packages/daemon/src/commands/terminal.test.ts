@@ -1,6 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { makeTerminalHandlers } from './terminal.js'
-import type { ITerminalAdapter, Session } from '../adapters/interface.js'
+import type { ITerminalAdapter } from '../adapters/interface.js'
+import type { WatcherManager } from '../watcher/manager.js'
+
+vi.mock('../transcript/claude-finder.js', () => ({
+  findClaudePanes: vi.fn().mockResolvedValue([]),
+}))
+
+import { findClaudePanes } from '../transcript/claude-finder.js'
 
 function makeAdapter(): ITerminalAdapter {
   return {
@@ -18,146 +25,98 @@ function makeAdapter(): ITerminalAdapter {
   } as unknown as ITerminalAdapter
 }
 
-const mockSession: Session = {
-  id: '$0',
-  name: 'main',
-  windows: [{
-    id: '@0',
-    name: 'editor',
-    panes: [{
-      id: 'tmux:main:@0:%0',
-      index: 0,
-      active: true,
-      command: 'vim',
-      dimensions: { rows: 40, cols: 120 },
-    }],
-  }],
+function makeWatcher(): WatcherManager {
+  return {
+    listWatches: vi.fn().mockReturnValue([]),
+    watch: vi.fn(),
+    unwatch: vi.fn(),
+    getByThread: vi.fn(),
+    dispose: vi.fn(),
+  } as unknown as WatcherManager
+}
+
+const mockClaudePane = {
+  paneId: 'tmux:main:@0:%0',
+  sessionName: 'my-feature',
+  sessionId: 'abc-123',
+  cwd: '/home/user/dev',
+  jsonlPath: '/home/user/.claude/projects/-home-user-dev/abc-123.jsonl',
 }
 
 describe('terminal command handlers', () => {
   let adapter: ITerminalAdapter
+  let watcher: WatcherManager
   let handlers: ReturnType<typeof makeTerminalHandlers>
   let respond: ReturnType<typeof vi.fn>
 
   beforeEach(() => {
     adapter = makeAdapter()
-    handlers = makeTerminalHandlers(adapter)
+    watcher = makeWatcher()
+    handlers = makeTerminalHandlers(adapter, watcher)
     respond = vi.fn().mockResolvedValue(undefined)
+    vi.mocked(findClaudePanes).mockResolvedValue([])
   })
 
   describe('list', () => {
-    it('responds with session name and pane info', async () => {
-      vi.mocked(adapter.listSessions).mockResolvedValue([mockSession])
+    it('responds with no-sessions message when no Claude panes found', async () => {
+      vi.mocked(findClaudePanes).mockResolvedValue([])
+      await handlers.list([], respond)
+      expect(respond).toHaveBeenCalledWith('No active Claude sessions.')
+    })
+
+    it('shows session name and pane ID', async () => {
+      vi.mocked(findClaudePanes).mockResolvedValue([mockClaudePane])
       await handlers.list([], respond)
       const text = respond.mock.calls[0]![0] as string
-      expect(text).toContain('*main*')
-      expect(text).toContain('`0`') // short pane ID
-      expect(text).toContain('vim')  // command
+      expect(text).toContain('my-feature')
+      expect(text).toContain('`0`')
     })
 
-    it('responds with exact no-sessions message', async () => {
-      vi.mocked(adapter.listSessions).mockResolvedValue([])
+    it('marks watched panes with watching indicator', async () => {
+      vi.mocked(findClaudePanes).mockResolvedValue([mockClaudePane])
+      vi.mocked(watcher.listWatches).mockReturnValue(['tmux:main:@0:%0'])
       await handlers.list([], respond)
-      expect(respond).toHaveBeenCalledWith('No active sessions.')
-    })
-  })
-
-  describe('tree', () => {
-    it('filters by session name and includes pane details', async () => {
-      vi.mocked(adapter.listSessions).mockResolvedValue([mockSession])
-      await handlers.tree(['main'], respond)
       const text = respond.mock.calls[0]![0] as string
-      expect(text).toContain('*main*')
-      expect(text).toContain('(active)')
-      expect(text).toContain('vim')
+      expect(text).toContain('watching')
     })
 
-    it('responds with specific not-found message including session name', async () => {
-      vi.mocked(adapter.listSessions).mockResolvedValue([mockSession])
-      await handlers.tree(['nonexistent'], respond)
-      expect(respond).toHaveBeenCalledWith('Session `nonexistent` not found.')
-    })
-
-    it('shows all sessions when no filter given', async () => {
-      vi.mocked(adapter.listSessions).mockResolvedValue([mockSession])
-      await handlers.tree([], respond)
+    it('does not mark unwatched panes', async () => {
+      vi.mocked(findClaudePanes).mockResolvedValue([mockClaudePane])
+      vi.mocked(watcher.listWatches).mockReturnValue([])
+      await handlers.list([], respond)
       const text = respond.mock.calls[0]![0] as string
-      expect(text).toContain('*main*')
+      expect(text).not.toContain('watching')
     })
 
-    it('shows no-sessions message when empty and no filter', async () => {
-      vi.mocked(adapter.listSessions).mockResolvedValue([])
-      await handlers.tree([], respond)
-      expect(respond).toHaveBeenCalledWith('No active sessions.')
-    })
-  })
-
-  describe('read', () => {
-    it('calls readPane with paneId and line count', async () => {
-      await handlers.read(['%0', '30'], respond)
-      expect(adapter.readPane).toHaveBeenCalledWith('%0', 30)
-    })
-
-    it('defaults to 50 lines', async () => {
-      await handlers.read(['%0'], respond)
-      expect(adapter.readPane).toHaveBeenCalledWith('%0', 50)
-    })
-
-    it('responds with usage including command syntax', async () => {
-      await handlers.read([], respond)
-      expect(respond).toHaveBeenCalledWith('Usage: `read <pane> [lines]`')
-    })
-
-    it('wraps output in code block with actual content', async () => {
-      vi.mocked(adapter.readPane).mockResolvedValue('hello world')
-      await handlers.read(['%0'], respond)
-      expect(respond).toHaveBeenCalledWith('```\nhello world\n```')
-    })
-
-    it('shows (empty) for blank pane content', async () => {
-      vi.mocked(adapter.readPane).mockResolvedValue('  \n  ')
-      await handlers.read(['%0'], respond)
-      expect(respond).toHaveBeenCalledWith('```\n(empty)\n```')
-    })
-  })
-
-  describe('send', () => {
-    it('joins multi-word text and sends to pane', async () => {
-      await handlers.send(['%0', 'hello', 'world'], respond)
-      expect(adapter.sendText).toHaveBeenCalledWith('%0', 'hello world')
-      expect(respond).toHaveBeenCalledWith(':white_check_mark: Sent to `%0`')
-    })
-
-    it('responds with usage when text missing', async () => {
-      await handlers.send(['%0'], respond)
-      expect(respond).toHaveBeenCalledWith('Usage: `send <pane> <text>`')
-    })
-
-    it('responds with usage when both args missing', async () => {
-      await handlers.send([], respond)
-      expect(respond).toHaveBeenCalledWith('Usage: `send <pane> <text>`')
-    })
-  })
-
-  describe('key', () => {
-    it('sends key and confirms with both key and pane in response', async () => {
-      await handlers.key(['%0', 'C-c'], respond)
-      expect(adapter.sendKey).toHaveBeenCalledWith('%0', 'C-c')
-      expect(respond).toHaveBeenCalledWith(':white_check_mark: Sent key `C-c` to `%0`')
-    })
-
-    it('responds with usage when key missing', async () => {
-      await handlers.key(['%0'], respond)
-      expect(respond).toHaveBeenCalledWith('Usage: `key <pane> <key>`')
-    })
-
-    it('responds with usage when both args missing', async () => {
-      await handlers.key([], respond)
-      expect(respond).toHaveBeenCalledWith('Usage: `key <pane> <key>`')
+    it('lists multiple sessions', async () => {
+      vi.mocked(findClaudePanes).mockResolvedValue([
+        mockClaudePane,
+        { ...mockClaudePane, paneId: 'tmux:main:@0:%1', sessionName: 'other-project' },
+      ])
+      await handlers.list([], respond)
+      const text = respond.mock.calls[0]![0] as string
+      expect(text).toContain('my-feature')
+      expect(text).toContain('other-project')
     })
   })
 
   describe('resolvePane', () => {
+    const mockSession = {
+      id: '$0',
+      name: 'main',
+      windows: [{
+        id: '@0',
+        name: 'editor',
+        panes: [{
+          id: 'tmux:main:@0:%0',
+          index: 0,
+          active: true,
+          command: 'zsh',
+          dimensions: { rows: 40, cols: 120 },
+        }],
+      }],
+    }
+
     it('resolves short numeric ID to full pane ID', async () => {
       vi.mocked(adapter.listSessions).mockResolvedValue([mockSession])
       const resolved = await handlers.resolvePane('0')

@@ -28,6 +28,14 @@ export interface ITerminalAdapter {
   // Reading
   readPane(paneId: string, lines?: number): Promise<string>
 
+  /**
+   * Return the PID of the process running directly in this pane (typically the
+   * shell). Used by the transcript resolver to walk the process tree and find
+   * the Claude Code session file. Optional — adapters that cannot provide this
+   * should return null.
+   */
+  getPanePid?(paneId: string): Promise<number | null>
+
   // Writing
   sendText(paneId: string, text: string): Promise<void>
   sendKey(paneId: string, key: string): Promise<void>

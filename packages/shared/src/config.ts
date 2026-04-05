@@ -16,6 +16,7 @@ export interface PerchConfig {
   userPluginsDir: string
   defaultPreset?: string
   panePresets: Record<string, string>
+  claudeCodeAvailable?: boolean
 }
 
 const DEFAULTS: PerchConfig = {
