@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.1.2 (2026-04-05)
+
+### Features
+
+- **Watch thread persistence** — daemon restarts now silently resume posting to the same Slack thread instead of creating a new one
+- **Watch confirmation in thread** — "Started watching" message now posts inside the watch thread instead of the main channel
+
+### Fixes
+
+- **False Claude session listings** — `list` no longer shows non-Claude panes that happen to share a CWD with a recent Claude session
+- **Short IDs everywhere** — all Slack-facing pane references now use short IDs consistently
+
 ## 0.1.1 (2026-04-05)
 
 ### Features

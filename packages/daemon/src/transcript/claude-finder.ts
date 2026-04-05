@@ -1,4 +1,4 @@
-import { access, readdir, stat } from 'fs/promises'
+import { access } from 'fs/promises'
 import { homedir } from 'os'
 import { join } from 'path'
 import { execa } from 'execa'
@@ -98,31 +98,6 @@ export async function findClaudePanes(adapter: ITerminalAdapter): Promise<Claude
     })
   }
 
-  // Strategy 2: fallback — match recent JSONL files against pane shell CWDs
-  const unmatchedEntries = paneEntries.filter(e => !matchedPaneIds.has(e.paneId) && e.shellPid !== null)
-  if (unmatchedEntries.length > 0) {
-    const recentJsonls = await findRecentJsonls(60 * 60 * 1000) // within the last hour
-    for (const entry of unmatchedEntries) {
-      if (!entry.shellPid) continue
-      const paneCwd = await getProcessCwd(entry.shellPid)
-      if (!paneCwd) continue
-      const encodedPaneCwd = encodeCwdPath(paneCwd)
-      for (const jsonl of recentJsonls) {
-        if (jsonl.encodedCwd === encodedPaneCwd && !matchedPaneIds.has(entry.paneId)) {
-          matchedPaneIds.add(entry.paneId)
-          results.push({
-            paneId: entry.paneId,
-            sessionName: entry.sessionName,
-            sessionId: jsonl.sessionId,
-            cwd: paneCwd,
-            jsonlPath: jsonl.path,
-          })
-          break
-        }
-      }
-    }
-  }
-
   return results
 }
 
@@ -179,48 +154,8 @@ async function getProcessCwd(pid: number): Promise<string | null> {
   }
 }
 
-function encodeCwdPath(cwd: string): string {
-  return cwd.replace(/\//g, '-')
-}
-
 function buildJsonlPath(cwd: string, sessionId: string): string {
-  const encoded = encodeCwdPath(cwd)
+  const encoded = cwd.replace(/\//g, '-')
   return join(homedir(), '.claude', 'projects', encoded, `${sessionId}.jsonl`)
-}
-
-interface RecentJsonl {
-  path: string
-  sessionId: string
-  encodedCwd: string // the directory name (encoded CWD)
-}
-
-async function findRecentJsonls(maxAgeMs: number): Promise<RecentJsonl[]> {
-  const projectsDir = join(homedir(), '.claude', 'projects')
-  const results: RecentJsonl[] = []
-  const cutoff = Date.now() - maxAgeMs
-  try {
-    const dirs = await readdir(projectsDir)
-    for (const dir of dirs) {
-      const dirPath = join(projectsDir, dir)
-      try {
-        const files = await readdir(dirPath)
-        for (const file of files) {
-          if (!file.endsWith('.jsonl')) continue
-          const filePath = join(dirPath, file)
-          try {
-            const fileStat = await stat(filePath)
-            if (fileStat.mtimeMs >= cutoff) {
-              results.push({
-                path: filePath,
-                sessionId: file.replace('.jsonl', ''),
-                encodedCwd: dir,
-              })
-            }
-          } catch { /* skip unreadable */ }
-        }
-      } catch { /* skip unreadable dir */ }
-    }
-  } catch { /* projects dir doesn't exist */ }
-  return results
 }
 
