@@ -39,6 +39,7 @@ function makeDeps() {
   const watcher: WatcherManager = {
     watch: vi.fn(),
     watchTranscript: vi.fn().mockResolvedValue(undefined),
+    registerWatch: vi.fn(),
     unwatch: vi.fn(),
     listWatches: vi.fn().mockReturnValue([]),
     dispose: vi.fn(),
@@ -47,7 +48,7 @@ function makeDeps() {
 
   const poster: Poster = {
     post: vi.fn().mockResolvedValue({ ts: '12345.678' }),
-    postToThread: vi.fn(),
+    postToThread: vi.fn().mockResolvedValue({ ts: '12345.999' }),
     makeThreadPostFn: vi.fn().mockReturnValue(vi.fn()),
     makeLiveView: vi.fn().mockReturnValue(mockLiveView),
   } as unknown as Poster
