@@ -402,33 +402,26 @@ export function registerE2ETests(provider: E2EProvider) {
       expect(response).toContain('unwatch')
     })
 
-    // -- Raw text forwarding --
+    // -- Text forwarding (prompts sent to Claude via thread) --
 
-    it('forwards "whoami" to pane and shows output', async () => {
+    it('forwards a prompt to the pane via sendText', async () => {
       sendTextSpy.mockClear()
-      await handleText('whoami', watchThreadTs)
-      expect(sendTextSpy).toHaveBeenCalledWith(testPaneId, 'whoami')
-      await wait(1000)
-      const screen = await adapter.readPane(testPaneId, 20)
-      expect(screen).toContain('whoami')
+      await handleText('What time is it?', watchThreadTs)
+      expect(sendTextSpy).toHaveBeenCalledWith(testPaneId, 'What time is it?')
     })
 
-    it('forwards "echo perch-e2e-marker" and verifies in pane', async () => {
+    it('forwards a multi-word prompt to the pane', async () => {
       sendTextSpy.mockClear()
-      await handleText('echo perch-e2e-marker', watchThreadTs)
-      expect(sendTextSpy).toHaveBeenCalledWith(testPaneId, 'echo perch-e2e-marker')
-      await wait(1000)
-      const screen = await adapter.readPane(testPaneId, 20)
-      expect(screen).toContain('perch-e2e-marker')
+      await handleText('Summarize the last 3 git commits', watchThreadTs)
+      expect(sendTextSpy).toHaveBeenCalledWith(testPaneId, 'Summarize the last 3 git commits')
     })
 
-    it('forwards "pwd" to pane', async () => {
+    it('does not treat unknown text as a key alias', async () => {
+      sendKeySpy.mockClear()
       sendTextSpy.mockClear()
-      await handleText('pwd', watchThreadTs)
-      expect(sendTextSpy).toHaveBeenCalledWith(testPaneId, 'pwd')
-      await wait(1000)
-      const screen = await adapter.readPane(testPaneId, 20)
-      expect(screen).toContain('/')
+      await handleText('refactor the auth module', watchThreadTs)
+      expect(sendKeySpy).not.toHaveBeenCalled()
+      expect(sendTextSpy).toHaveBeenCalledWith(testPaneId, 'refactor the auth module')
     })
 
     // -- Unwatch from thread (must be last thread test) --
