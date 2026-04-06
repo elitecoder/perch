@@ -5,10 +5,6 @@
     "background_color": "#1a1a2e"
   },
   "features": {
-    "assistant_view": {
-      "assistant_description": "Watch and control Claude Code sessions",
-      "suggested_prompts": []
-    },
     "bot_user": {
       "display_name": "perch",
       "always_online": false
@@ -18,7 +14,6 @@
     "scopes": {
       "bot": [
         "app_mentions:read",
-        "assistant:write",
         "chat:write",
         "channels:read",
         "groups:read",
@@ -38,7 +33,6 @@
   "settings": {
     "event_subscriptions": {
       "bot_events": [
-        "assistant_thread_started",
         "message.channels",
         "message.groups",
         "message.im",
