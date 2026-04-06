@@ -137,6 +137,20 @@ describe('ConversationalFormatter', () => {
     expect(actions).toHaveLength(0)
   })
 
+  it('resets response state even when user record is all system tags', () => {
+    // Simulate a streaming response in progress
+    fmt.processRecords([makeAssistant([{ type: 'text', text: 'Hello' }], 'tool_use')])
+    expect(fmt.isStreaming).toBe(true)
+    // System-only user record should still reset state
+    fmt.processRecords([makeUser('<system-reminder>context</system-reminder>')])
+    expect(fmt.isStreaming).toBe(false)
+    // Next assistant text should be post_response (new message), not update_response
+    const actions = fmt.processRecords([
+      makeAssistant([{ type: 'text', text: 'New response' }], 'end_turn'),
+    ])
+    expect(actions[0]!.type).toBe('post_response')
+  })
+
   it('emits warning for failed tool results', () => {
     const actions = fmt.processRecords([
       makeUser([{ type: 'tool_result', tool_use_id: 't1', is_error: true }]),

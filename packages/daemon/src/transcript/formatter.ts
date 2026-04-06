@@ -134,11 +134,12 @@ export class ConversationalFormatter {
     const { content } = record.message
 
     if (typeof content === 'string') {
-      const text = stripSystemTags(content)
-      if (!text) return []
-      // New user turn — reset response state
+      // New user turn — always reset response state so the next assistant
+      // message creates a fresh post instead of editing the previous one.
       this._responseStarted = false
       this.waitingForToolResult = false
+      const text = stripSystemTags(content)
+      if (!text) return []
       return [{ type: 'post_user', text: `:speech_balloon: *User:* ${text}` }]
     }
 
