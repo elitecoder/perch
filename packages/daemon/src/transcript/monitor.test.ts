@@ -176,4 +176,77 @@ describe('TranscriptMonitor', () => {
 
     monitor.dispose()
   })
+
+  it('calls flush after processing actions', async () => {
+    const path = jsonlPath('flush-test.jsonl')
+    await writeFile(path, '')
+
+    const flush = vi.fn().mockResolvedValue(undefined)
+    const poster = makeMockPoster({
+      updateStatus: vi.fn().mockResolvedValue(undefined),
+      postResponse: vi.fn().mockResolvedValue(undefined),
+      postUser: vi.fn().mockResolvedValue(undefined),
+      flush,
+    })
+
+    const monitor = new TranscriptMonitor()
+    await monitor.watch('pane:6', path, poster, 'ts-6')
+
+    await appendFile(
+      path,
+      JSON.stringify({
+        type: 'assistant',
+        isSidechain: false,
+        message: {
+          model: 'claude-sonnet-4-6',
+          id: 'msg_flush',
+          role: 'assistant',
+          content: [{ type: 'text', text: 'Hello' }],
+          stop_reason: 'end_turn',
+        },
+      }) + '\n',
+    )
+
+    await monitor.tick('pane:6')
+    expect(flush).toHaveBeenCalled()
+
+    monitor.dispose()
+  })
+
+  it('suppresses user echo for forwarded text after system tags are stripped', async () => {
+    const path = jsonlPath('echo-test.jsonl')
+    await writeFile(path, '')
+
+    const postUser = vi.fn().mockResolvedValue(undefined)
+    const poster = makeMockPoster({
+      updateStatus: vi.fn().mockResolvedValue(undefined),
+      postResponse: vi.fn().mockResolvedValue(undefined),
+      postUser,
+    })
+
+    const monitor = new TranscriptMonitor()
+    await monitor.watch('pane:7', path, poster, 'ts-7')
+
+    // Record forwarded text from Slack
+    monitor.recordForwardedText('pane:7', 'fix the bug')
+
+    // JSONL echoes back the user text wrapped in system tags
+    await appendFile(
+      path,
+      JSON.stringify({
+        type: 'user',
+        isSidechain: false,
+        message: {
+          role: 'user',
+          content: '<system-reminder>context</system-reminder>\nfix the bug\n<system-reminder>more context</system-reminder>',
+        },
+      }) + '\n',
+    )
+
+    await monitor.tick('pane:7')
+    // The user text should be suppressed because it matches the forwarded text
+    expect(postUser).not.toHaveBeenCalled()
+
+    monitor.dispose()
+  })
 })

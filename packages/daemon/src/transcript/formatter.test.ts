@@ -151,6 +151,79 @@ describe('ConversationalFormatter', () => {
     expect(actions[0]!.type).toBe('post_response')
   })
 
+  it('strips multiple system tags and preserves user text between them', () => {
+    const actions = fmt.processRecords([
+      makeUser(
+        '<system-reminder>Session context</system-reminder>\n' +
+        '<local-command-caveat>Caveat text</local-command-caveat>\n' +
+        'please fix the login bug\n' +
+        '<system-reminder>More context</system-reminder>',
+      ),
+    ])
+    expect(actions).toHaveLength(1)
+    expect(actions[0]!.text).toContain('please fix the login bug')
+    expect(actions[0]!.text).not.toContain('system-reminder')
+    expect(actions[0]!.text).not.toContain('local-command-caveat')
+  })
+
+  it('strips local-command-stdout tags', () => {
+    const actions = fmt.processRecords([
+      makeUser('<local-command-stdout>Set model to default</local-command-stdout>'),
+    ])
+    expect(actions).toHaveLength(0)
+  })
+
+  it('strips user-prompt-submit-hook tags', () => {
+    const actions = fmt.processRecords([
+      makeUser('<user-prompt-submit-hook>hook output</user-prompt-submit-hook>\nhello'),
+    ])
+    expect(actions).toHaveLength(1)
+    expect(actions[0]!.text).toContain('hello')
+    expect(actions[0]!.text).not.toContain('hook')
+  })
+
+  it('resets waitingForToolResult for system-only user records', () => {
+    // Put formatter in waiting-for-tool state
+    fmt.processRecords([
+      makeAssistant(
+        [{ type: 'tool_use', id: 't1', name: 'Bash', input: { command: 'ls' } }],
+        'tool_use',
+      ),
+    ])
+    expect(fmt.waitingForToolResult).toBe(true)
+    // System-only user record should still reset
+    fmt.processRecords([makeUser('<system-reminder>context</system-reminder>')])
+    expect(fmt.waitingForToolResult).toBe(false)
+  })
+
+  it('handles multi-turn flow: response → system user → new response', () => {
+    // Turn 1: assistant responds with text + tool
+    const t1 = fmt.processRecords([
+      makeAssistant(
+        [
+          { type: 'text', text: 'Not yet.' },
+          { type: 'tool_use', id: 't1', name: 'Bash', input: { command: 'git commit' } },
+        ],
+        'tool_use',
+      ),
+    ])
+    expect(t1.find(a => a.type === 'post_response')?.text).toContain('Not yet.')
+
+    // Tool result
+    fmt.processRecords([
+      makeUser([{ type: 'tool_result', tool_use_id: 't1', content: 'ok' }]),
+    ])
+
+    // Turn 2: assistant final response (short text, the kind that was getting lost)
+    const t2 = fmt.processRecords([
+      makeAssistant([{ type: 'text', text: 'Committed.' }], 'end_turn'),
+    ])
+    // Should be update_response since _responseStarted is still true from turn 1
+    expect(t2).toHaveLength(1)
+    expect(t2[0]!.type).toBe('update_response')
+    expect(t2[0]!.text).toBe('Committed.')
+  })
+
   it('emits warning for failed tool results', () => {
     const actions = fmt.processRecords([
       makeUser([{ type: 'tool_result', tool_use_id: 't1', is_error: true }]),

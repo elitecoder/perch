@@ -173,6 +173,8 @@ interface StubWatch {
 const POLL_INTERVAL_MS = 1000
 /** After this many empty ticks, check if Claude rotated to a new JSONL file. */
 const ROTATION_CHECK_TICKS = 10
+/** Minimum empty ticks before checking for interactive prompts (avoids transient files). */
+const INTERACTIVE_CHECK_TICKS = 3
 /** How long (ms) a forwarded text stays suppressed. */
 const FORWARDED_TTL_MS = 30_000
 /** Directory where PermissionRequest hooks write marker files. */
@@ -342,8 +344,9 @@ export class TranscriptMonitor {
 
       // Typing lease and stall timers are managed by StatusReactor (timer-based, not tick-based)
 
-      // Check if Claude is waiting for user input (permission approval or interactive prompt)
-      if (!entry.waitingNotified) {
+      // Check if Claude is waiting for user input (permission approval or interactive prompt).
+      // Wait a few ticks before checking to avoid transient files from non-blocking tools.
+      if (!entry.waitingNotified && entry.emptyTicks >= INTERACTIVE_CHECK_TICKS) {
         const posted = await this._tryPostInteractiveButtons(entry, paneId)
         if (posted) {
           entry.waitingNotified = true
@@ -553,9 +556,10 @@ export class TranscriptMonitor {
         }
       }
 
-      // Generic notification (idle_prompt, elicitation_dialog, etc.)
+      // Interactive notification types that actually need user action
+      const INTERACTIVE_NOTIF_TYPES = new Set(['permission_prompt', 'idle_prompt', 'elicitation_dialog'])
       const notifType = interactive.notification_type as string | undefined
-      if (notifType && !toolName) {
+      if (notifType && !toolName && INTERACTIVE_NOTIF_TYPES.has(notifType)) {
         try {
           const msg = `:eyes: *Claude needs your attention*`
           const { ts } = await entry.poster.postApprovalButtons(entry.threadTs, msg, paneId, [
