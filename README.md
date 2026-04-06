@@ -33,20 +33,6 @@ Perch lets you **stay in the loop from anywhere Slack works**. Watch Claude thin
 
 ---
 
-## Demo
-
-> **Talk to Claude Code from Slack — on any device.**
-
-**List sessions and watch with live updates:**
-
-![Perch listing workspaces and watching a pane with Claude Code preset](assets/demo-list.png)
-
-**Send tasks and watch responses stream in:**
-
-![Full Perch flow — watch, send, live updates, unwatch](assets/demo-flow.png)
-
----
-
 ## Quick Start
 
 ```bash
