@@ -403,42 +403,25 @@ export async function runSetup(): Promise<void> {
   if (botToken && appToken) {
     ui.success('Slack tokens found in Keychain')
   } else {
-    const hasExisting = await confirm({
-      message: 'Does someone on your team already have a Perch Slack app installed?',
-      default: false,
+    const defaultUser = homedir().split('/').pop() ?? 'user'
+    const username = await input({
+      message: `Your name (used for Slack app name, e.g. Perch-${defaultUser}):`,
+      default: defaultUser,
     })
+    const manifest = buildSlackManifest(username)
 
-    if (hasExisting) {
-      ui.info('\nYou can reuse the same tokens if you share a channel, or create')
-      ui.info('your own Perch app for a separate channel (recommended).')
-      ui.info('\nTo reuse: ask your teammate for the Bot Token and App Token.')
-      ui.info('  They can find them at: https://api.slack.com/apps → select their Perch app')
-      ui.info('  Bot Token:  OAuth & Permissions → Bot User OAuth Token (xoxb-...)')
-      ui.info('  App Token:  Basic Information → App-Level Tokens (xapp-...)')
-    }
-
-    if (!hasExisting) {
-      const defaultUser = homedir().split('/').pop() ?? 'user'
-      const username = await input({
-        message: `Your name (used for Slack app name, e.g. Perch-${defaultUser}):`,
-        default: defaultUser,
-      })
-      const manifest = buildSlackManifest(username)
-
-      ui.info(`\nCreate your Slack app (Perch-${username.toLowerCase().replace(/[^a-z0-9-]/g, '')}):\n`)
-      ui.info('  1. Open: https://api.slack.com/apps?new_app=1')
-      ui.info('  2. Choose "From a manifest" → select your workspace')
-      ui.info('  3. Switch to JSON tab and paste this manifest:\n')
-      console.log(manifest)
-      ui.info('\n  4. Click "Create" to create the app')
-      ui.info('  5. Click "Install to Workspace" and authorize')
-      await input({ message: 'Press Enter once the app is installed to your workspace...' })
-
-      ui.info('\nCopy the Bot Token:')
-      ui.info('  App page → OAuth & Permissions → Bot User OAuth Token (starts with xoxb-)')
-    }
+    ui.info(`\nCreate your Slack app (Perch-${username.toLowerCase().replace(/[^a-z0-9-]/g, '')}):\n`)
+    ui.info('  1. Open: https://api.slack.com/apps?new_app=1')
+    ui.info('  2. Choose "From a manifest" → select your workspace')
+    ui.info('  3. Switch to JSON tab and paste this manifest:\n')
+    console.log(manifest)
+    ui.info('\n  4. Click "Create" to create the app')
+    ui.info('  5. Click "Install to Workspace" and authorize')
+    await input({ message: 'Press Enter once the app is installed to your workspace...' })
 
     if (!botToken) {
+      ui.info('\nCopy the Bot Token:')
+      ui.info('  App page → OAuth & Permissions → Bot User OAuth Token (starts with xoxb-)')
       while (true) {
         botToken = await input({ message: 'Paste your Bot Token (xoxb-...):' })
         const spinner = ui.spinner('Validating bot token...').start()
@@ -450,11 +433,9 @@ export async function runSetup(): Promise<void> {
     }
 
     if (!appToken) {
-      if (!hasExisting) {
-        ui.info('\nGenerate an App-Level Token:')
-        ui.info('  App page → Basic Information → scroll to "App-Level Tokens" → Generate Token')
-        ui.info('  Name it anything (e.g. "perch"), add scope: connections:write, then Generate')
-      }
+      ui.info('\nGenerate an App-Level Token:')
+      ui.info('  App page → Basic Information → scroll to "App-Level Tokens" → Generate Token')
+      ui.info('  Name it anything (e.g. "perch"), add scope: connections:write, then Generate')
       while (true) {
         appToken = await input({ message: 'Paste your App Token (xapp-...):' })
         const spinner = ui.spinner('Validating app token...').start()
