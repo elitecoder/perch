@@ -339,8 +339,16 @@ export async function runSetup(): Promise<void> {
           autoSpinner.succeed('Automation Mode enabled')
           if (await isCmuxRunning()) {
             // cmux needs a restart to pick up the defaults change
-            ui.info('  Restart cmux for the setting to take effect.')
-            await input({ message: 'Press Enter after restarting cmux...' })
+            const restartSpinner = ui.spinner('Restarting cmux to apply setting...').start()
+            await execa('osascript', ['-e', 'tell application "cmux" to quit'])
+            await new Promise(r => setTimeout(r, 1000))
+            await launchCmux()
+            const ready = await waitForCmuxSocket()
+            if (ready) {
+              restartSpinner.succeed('cmux restarted')
+            } else {
+              restartSpinner.warn('cmux restarted but socket not yet ready')
+            }
           }
         } catch (err) {
           autoSpinner.fail(`Could not enable Automation Mode: ${err instanceof Error ? err.message : err}`)
@@ -393,6 +401,8 @@ export async function runSetup(): Promise<void> {
   if (botToken) {
     ui.success('Bot token found in Keychain')
   } else {
+    ui.info('Find your Bot Token in your Slack app settings:')
+    ui.info('  App page → OAuth & Permissions → Bot User OAuth Token')
     while (true) {
       botToken = await input({ message: 'Paste your Bot Token (xoxb-...):' })
       const spinner = ui.spinner('Validating bot token...').start()
@@ -407,6 +417,9 @@ export async function runSetup(): Promise<void> {
   if (appToken) {
     ui.success('App token found in Keychain')
   } else {
+    ui.info('Generate an App-Level Token in your Slack app settings:')
+    ui.info('  App page → Basic Information → App-Level Tokens → Generate Token')
+    ui.info('  Add scope: connections:write')
     while (true) {
       appToken = await input({ message: 'Paste your App Token (xapp-...):' })
       const spinner = ui.spinner('Validating app token...').start()
