@@ -134,7 +134,7 @@ export class ConversationalFormatter {
     const { content } = record.message
 
     if (typeof content === 'string') {
-      const text = content.trim()
+      const text = stripSystemTags(content)
       if (!text) return []
       // New user turn — reset response state
       this._responseStarted = false
@@ -198,6 +198,15 @@ function formatToolCall(block: ToolUseBlock): string {
 function stringField(obj: Record<string, unknown>, key: string): string | undefined {
   const v = obj[key]
   return typeof v === 'string' ? v : undefined
+}
+
+/** Known XML tags injected by Claude Code into user records (slash command outputs, system context). */
+const SYSTEM_TAGS = ['local-command-caveat', 'command-name', 'command-message', 'command-args', 'local-command-stdout', 'system-reminder', 'user-prompt-submit-hook']
+const SYSTEM_TAG_RE = new RegExp(`<(${SYSTEM_TAGS.join('|')})[^>]*>[\\s\\S]*?<\\/\\1>`, 'g')
+
+/** Strip system-injected XML tags from user record content, returning only real user text. */
+function stripSystemTags(text: string): string {
+  return text.replace(SYSTEM_TAG_RE, '').trim()
 }
 
 function shorten(s: string, max = 50): string {
