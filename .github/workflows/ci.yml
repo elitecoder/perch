@@ -33,3 +33,27 @@ jobs:
 
       - name: Test
         run: pnpm test
+
+  e2e:
+    name: E2E (Slack + cmux)
+    runs-on: self-hosted
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v3
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Build
+        run: pnpm build
+
+      - name: E2E tests
+        run: pnpm --filter daemon exec npx vitest run --config vitest.e2e.config.ts

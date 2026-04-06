@@ -1,6 +1,6 @@
 {
   "name": "@perch-dev/daemon",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "type": "module",
   "exports": {
     ".": "./dist/index.js",

@@ -14,7 +14,7 @@ import { writeConfig, readConfig, CONFIG_DIR } from '@perch-dev/shared/config'
 const __dirname = dirname(fileURLToPath(import.meta.url))
 
 const SLACK_MANIFEST = JSON.stringify({
-  display_information: { name: 'Perch', description: 'Remote control your terminal sessions from Slack', background_color: '#1a1a2e' },
+  display_information: { name: 'Perch', description: 'Remote-control Claude Code sessions from Slack — watch progress, approve tools, and send prompts', background_color: '#1a1a2e' },
   settings: {
     socket_mode_enabled: true,
     org_deploy_enabled: false,
@@ -24,7 +24,7 @@ const SLACK_MANIFEST = JSON.stringify({
       bot_events: ['message.channels', 'message.groups', 'message.im', 'app_mention'],
     },
   },
-  oauth_config: { scopes: { bot: ['app_mentions:read', 'chat:write', 'channels:read', 'groups:read', 'channels:history', 'groups:history', 'im:history', 'im:read', 'im:write', 'files:write'] } },
+  oauth_config: { scopes: { bot: ['app_mentions:read', 'assistant:write', 'chat:write', 'channels:read', 'groups:read', 'channels:history', 'groups:history', 'im:history', 'im:read', 'im:write', 'files:read', 'files:write', 'reactions:read', 'reactions:write'] } },
   features: { bot_user: { display_name: 'perch', always_online: false } },
 }, null, 2)
 
@@ -56,7 +56,30 @@ const PERCH_HOOK_MARKER = 'perch-managed'
 const HOOK_SOURCES = join(__dirname, '../../../hooks')
 
 function perchHookEntries(): Record<string, Array<Record<string, unknown>>> {
+  const stateHook = (event: string, opts?: { timeout?: number; async?: boolean }) => ({
+    type: 'command',
+    command: `sh "${join(HOOKS_DIR, 'state-hook.sh')}" ${event}`,
+    timeout: opts?.timeout ?? 5,
+    ...(opts?.async ? { async: true } : {}),
+    _perch: PERCH_HOOK_MARKER,
+  })
+
   return {
+    PreToolUse: [
+      {
+        matcher: 'ExitPlanMode',
+        hooks: [{
+          type: 'command',
+          command: `sh "${join(HOOKS_DIR, 'pre-tool-use.sh')}"`,
+          timeout: 120,
+          _perch: PERCH_HOOK_MARKER,
+        }],
+      },
+      {
+        matcher: '',
+        hooks: [stateHook('pre-tool-use', { async: true })],
+      },
+    ],
     PermissionRequest: [{
       matcher: '',
       hooks: [{
@@ -84,6 +107,18 @@ function perchHookEntries(): Record<string, Array<Record<string, unknown>>> {
         _perch: PERCH_HOOK_MARKER,
       }],
     }],
+    Stop: [{
+      matcher: '',
+      hooks: [stateHook('stop')],
+    }],
+    UserPromptSubmit: [{
+      matcher: '',
+      hooks: [stateHook('prompt-submit')],
+    }],
+    Notification: [{
+      matcher: '',
+      hooks: [stateHook('notification')],
+    }],
   }
 }
 
@@ -96,7 +131,7 @@ async function installClaudeHooks(): Promise<void> {
   // Copy hook scripts to ~/.config/perch/hooks/
   mkdirSync(HOOKS_DIR, { recursive: true })
   mkdirSync(WAITING_DIR, { recursive: true })
-  for (const name of ['permission-request.sh', 'post-tool-use.sh']) {
+  for (const name of ['permission-request.sh', 'post-tool-use.sh', 'pre-tool-use.sh', 'state-hook.sh']) {
     const src = join(HOOK_SOURCES, name)
     const dst = join(HOOKS_DIR, name)
     writeFileSync(dst, readFileSync(src, 'utf-8'), { mode: 0o755 })

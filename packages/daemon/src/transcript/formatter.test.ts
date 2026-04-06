@@ -138,6 +138,53 @@ describe('ConversationalFormatter', () => {
     ])
     expect(actions.find(a => a.type === 'post_response')?.text).toBe('Done!')
   })
+
+  it('deduplicates consecutive identical tool calls', () => {
+    const actions = fmt.processRecords([
+      makeAssistant([
+        { type: 'tool_use', id: 't1', name: 'Read', input: { file_path: '/a.ts' } },
+        { type: 'tool_use', id: 't2', name: 'Read', input: { file_path: '/a.ts' } },
+        { type: 'tool_use', id: 't3', name: 'Read', input: { file_path: '/a.ts' } },
+      ], 'tool_use'),
+    ])
+    const status = actions.find(a => a.type === 'update_status')!
+    expect(status.text).toContain('(×3)')
+    // Only one line (deduped), not three
+    expect(status.text.split('\n')).toHaveLength(1)
+  })
+
+  it('does not dedup different tool calls', () => {
+    const actions = fmt.processRecords([
+      makeAssistant([
+        { type: 'tool_use', id: 't1', name: 'Read', input: { file_path: '/a.ts' } },
+        { type: 'tool_use', id: 't2', name: 'Read', input: { file_path: '/b.ts' } },
+      ], 'tool_use'),
+    ])
+    const status = actions.find(a => a.type === 'update_status')!
+    expect(status.text.split('\n')).toHaveLength(2)
+    expect(status.text).not.toContain('×')
+  })
+
+  it('resets dedup counter after end_turn', () => {
+    fmt.processRecords([
+      makeAssistant([
+        { type: 'tool_use', id: 't1', name: 'Read', input: { file_path: '/a.ts' } },
+        { type: 'tool_use', id: 't2', name: 'Read', input: { file_path: '/a.ts' } },
+      ], 'tool_use'),
+    ])
+    // end_turn clears state
+    fmt.processRecords([
+      makeAssistant([{ type: 'text', text: 'Done' }], 'end_turn'),
+    ])
+    // New turn — same tool should NOT carry over the dedup count
+    const actions = fmt.processRecords([
+      makeAssistant([
+        { type: 'tool_use', id: 't3', name: 'Read', input: { file_path: '/a.ts' } },
+      ], 'tool_use'),
+    ])
+    const status = actions.find(a => a.type === 'update_status')!
+    expect(status.text).not.toContain('×')
+  })
 })
 
 describe('toSlackMrkdwn', () => {
@@ -159,5 +206,45 @@ describe('toSlackMrkdwn', () => {
 
   it('leaves inline code untouched', () => {
     expect(toSlackMrkdwn('use `pnpm test`')).toBe('use `pnpm test`')
+  })
+
+  it('escapes & in plain text', () => {
+    expect(toSlackMrkdwn('x & y')).toBe('x &amp; y')
+  })
+
+  it('escapes < and > in plain text', () => {
+    expect(toSlackMrkdwn('x < 5 && y > 3')).toBe('x &lt; 5 &amp;&amp; y &gt; 3')
+  })
+
+  it('preserves & in URLs inside markdown links', () => {
+    expect(toSlackMrkdwn('[link](https://x.com?a=1&b=2)')).toBe('<https://x.com?a=1&b=2|link>')
+  })
+
+  it('escapes angle brackets within bold text', () => {
+    expect(toSlackMrkdwn('**x < 5**')).toBe('*x &lt; 5*')
+  })
+
+  it('preserves **bold** inside fenced code blocks', () => {
+    const input = '```\n**not bold**\n```'
+    expect(toSlackMrkdwn(input)).toBe(input)
+  })
+
+  it('preserves ~~strike~~ inside inline code', () => {
+    expect(toSlackMrkdwn('use `~~keep~~` here')).toBe('use `~~keep~~` here')
+  })
+
+  it('does not escape HTML entities inside code blocks', () => {
+    const input = '```\nx < 5 && y > 3\n```'
+    expect(toSlackMrkdwn(input)).toBe(input)
+  })
+
+  it('converts markdown outside code but preserves inside', () => {
+    const input = '**bold** and `**literal**`'
+    expect(toSlackMrkdwn(input)).toBe('*bold* and `**literal**`')
+  })
+
+  it('preserves headings inside fenced code blocks', () => {
+    const input = '```markdown\n# Not a heading\n```'
+    expect(toSlackMrkdwn(input)).toBe(input)
   })
 })

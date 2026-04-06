@@ -1,5 +1,6 @@
 import type { ITerminalAdapter } from '../adapters/interface.js'
 import type { CommandHandler } from './router.js'
+import { shortId } from './watch.js'
 
 export function makeWorkspaceHandlers(adapter: ITerminalAdapter): Record<string, CommandHandler> {
   const newClaude: CommandHandler = async (args, respond) => {
@@ -18,8 +19,9 @@ export function makeWorkspaceHandlers(adapter: ITerminalAdapter): Record<string,
       return
     }
     await adapter.sendText(pane.id, 'claude')
+    const sid = shortId(pane.id)
     await respond(
-      `:white_check_mark: Created session *${name}* — \`${pane.id}\`\nUse \`watch ${pane.id}\` to monitor.`,
+      `:white_check_mark: Created session *${name}* — \`${sid}\`\nUse \`watch ${sid}\` to monitor.`,
     )
   }
 

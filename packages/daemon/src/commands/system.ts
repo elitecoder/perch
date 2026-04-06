@@ -14,7 +14,7 @@ const HELP_TEXT = `
 \`watch <pane>\`                  — Start monitoring a Claude session
 \`unwatch <pane>\`                — Stop monitoring
 \`watching\`                      — List currently watched sessions
-_(In a thread: reply, \`accept\`, \`reject\`, \`interrupt\`, \`unwatch\`)_
+_(In a thread: reply, \`accept\`, \`reject\`, \`interrupt\`, \`unwatch\`, \`new thread\`)_
 
 *System*
 \`help\`                          — Show this message

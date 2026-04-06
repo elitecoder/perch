@@ -58,7 +58,7 @@ describe('workspace command handlers', () => {
       expect(adapter.sendText).toHaveBeenCalledWith('tmux:new-session:@0:%0', 'claude')
       const text = respond.mock.calls[0]![0] as string
       expect(text).toContain('my-project')
-      expect(text).toContain('tmux:new-session:@0:%0')
+      expect(text).toContain('`0`')
       expect(text).toContain('watch')
     })
 

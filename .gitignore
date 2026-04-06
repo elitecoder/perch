@@ -7,3 +7,4 @@ coverage/
 !pnpm-lock.yaml
 .claude/worktrees/
 .claude/plans/
+e2e-slack-messages.txt

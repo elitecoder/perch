@@ -13,7 +13,7 @@ import { join } from 'path'
 import { TmuxAdapter } from './adapters/tmux.js'
 import { ClaudeCodePlugin } from './plugins/builtin/claude-code.js'
 import { WatcherManager } from './watcher/manager.js'
-import type { LiveView, ConversationalView } from './slack/poster.js'
+import type { ConversationalView } from './slack/poster.js'
 
 class MockPoster {
   messages: { text: string; threadTs?: string }[] = []
@@ -33,14 +33,6 @@ class MockPoster {
   async postCode(text: string) { return this.post('```\n' + text + '\n```') }
   async postError(msg: string) { void this.post(`:x: ${msg}`) }
   async update(_ts: string, _text: string) { /* no-op */ }
-
-  makeLiveView(_threadTs: string): LiveView {
-    const self = this
-    return {
-      async update(text: string) { await self.post(text) },
-      async transition(text: string) { await self.post(text) },
-    } as LiveView
-  }
 
   makeConversationalView(threadTs: string): ConversationalView {
     const self = this

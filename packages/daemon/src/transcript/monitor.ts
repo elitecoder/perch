@@ -8,9 +8,144 @@ import type { SlackAction } from './formatter.js'
 import { TranscriptReader } from './reader.js'
 import { ConversationalFormatter } from './formatter.js'
 
+/** Tracks emoji reaction state on the watch parent message. */
+type ReactionState = 'none' | 'eyes' | 'thinking_face' | 'wrench' | 'speech_balloon' | 'white_check_mark' | 'x' | 'hourglass_flowing_sand' | 'warning'
+
+export class StatusReactor {
+  private _current: ReactionState = 'none'
+  private _parentTs: string
+  private _threadTs: string
+
+  /** Once true, all transitions are blocked until setTarget() resets. */
+  private _finished = false
+  private _debounceTimer: ReturnType<typeof setTimeout> | null = null
+  private _pendingEmoji: ReactionState = 'none'
+  private _typingLeaseTimer: ReturnType<typeof setInterval> | null = null
+  private _stallSoftTimer: ReturnType<typeof setTimeout> | null = null
+  private _stallHardTimer: ReturnType<typeof setTimeout> | null = null
+
+  /** Debounce interval for intermediate states (OpenClaw: 700ms). */
+  static readonly DEBOUNCE_MS = 700
+  /** Typing indicator refresh interval (ms). */
+  static readonly TYPING_LEASE_MS = 3000
+  /** Stall soft threshold (OpenClaw: 10s). */
+  static readonly STALL_SOFT_MS = 10_000
+  /** Stall hard threshold (OpenClaw: 30s). */
+  static readonly STALL_HARD_MS = 30_000
+
+  constructor(
+    private readonly poster: Poster,
+    parentTs: string,
+    threadTs: string,
+  ) {
+    this._parentTs = parentTs
+    this._threadTs = threadTs
+  }
+
+  /** Update the message that reactions target and reset finished state. */
+  setTarget(ts: string): void {
+    this._clearAllTimers()
+    this._finished = false
+    this._parentTs = ts
+    this._current = 'none'
+  }
+
+  /** Reset the finished flag without changing the target (for prompt-submit). */
+  reset(): void {
+    this._clearAllTimers()
+    this._finished = false
+    // Remove the old terminal reaction
+    if (this._current === 'white_check_mark' || this._current === 'x') {
+      this.poster.removeReaction(this._parentTs, this._current).catch(() => {})
+      this._current = 'none'
+    }
+  }
+
+  /** Start typing lease and stall timers. Called when activity begins. */
+  activate(): void {
+    if (this._finished) return
+    // Start typing lease
+    if (!this._typingLeaseTimer) {
+      this.poster.setTypingStatus(this._threadTs, 'is thinking...').catch(() => {})
+      this._typingLeaseTimer = setInterval(() => {
+        if (!this._finished) {
+          this.poster.setTypingStatus(this._threadTs, 'is thinking...').catch(() => {})
+        }
+      }, StatusReactor.TYPING_LEASE_MS)
+    }
+    this._resetStallTimers()
+  }
+
+  /** Transition to a new reaction state. Terminal states are immediate; others debounce. */
+  async transition(next: ReactionState): Promise<void> {
+    if (this._finished || next === this._current) return
+
+    const isTerminal = next === 'white_check_mark' || next === 'x'
+    if (isTerminal) {
+      this._finished = true
+      this._clearAllTimers()
+      this.poster.clearTypingStatus(this._threadTs).catch(() => {})
+      if (this._debounceTimer) {
+        clearTimeout(this._debounceTimer)
+        this._debounceTimer = null
+      }
+      await this._applyEmoji(next)
+    } else {
+      // Debounce intermediate states to prevent flickering
+      this._pendingEmoji = next
+      if (this._debounceTimer) clearTimeout(this._debounceTimer)
+      this._debounceTimer = setTimeout(() => {
+        this._debounceTimer = null
+        void this._applyEmoji(this._pendingEmoji)
+      }, StatusReactor.DEBOUNCE_MS)
+      // Reset stall timers on every phase change
+      this._resetStallTimers()
+    }
+  }
+
+  private _resetStallTimers(): void {
+    if (this._stallSoftTimer) clearTimeout(this._stallSoftTimer)
+    if (this._stallHardTimer) clearTimeout(this._stallHardTimer)
+    this._stallSoftTimer = setTimeout(() => {
+      void this.transition('hourglass_flowing_sand')
+    }, StatusReactor.STALL_SOFT_MS)
+    this._stallHardTimer = setTimeout(() => {
+      void this.transition('warning')
+    }, StatusReactor.STALL_HARD_MS)
+  }
+
+  private _clearAllTimers(): void {
+    if (this._debounceTimer) { clearTimeout(this._debounceTimer); this._debounceTimer = null }
+    if (this._typingLeaseTimer) { clearInterval(this._typingLeaseTimer); this._typingLeaseTimer = null }
+    if (this._stallSoftTimer) { clearTimeout(this._stallSoftTimer); this._stallSoftTimer = null }
+    if (this._stallHardTimer) { clearTimeout(this._stallHardTimer); this._stallHardTimer = null }
+  }
+
+  private async _applyEmoji(next: ReactionState): Promise<void> {
+    if (next === this._current) return
+    console.log(`[reactor] :${this._current}: → :${next}: on message ${this._parentTs}`)
+    if (this._current !== 'none') {
+      await this.poster.removeReaction(this._parentTs, this._current)
+    }
+    if (next !== 'none') {
+      await this.poster.addReaction(this._parentTs, next)
+    }
+    this._current = next
+  }
+
+  get current(): ReactionState { return this._current }
+
+  /** Clean up all timers (for shutdown). */
+  dispose(): void {
+    this._clearAllTimers()
+  }
+}
+
 export interface TranscriptWatch {
   paneId: string
   threadTs: string
+  /** Timestamp of the top-level "Watching" message (for reactions). */
+  parentTs: string
   /** The tool plugin associated with this session (for key aliases etc.). */
   plugin?: IToolPlugin
   poster: Poster
@@ -19,11 +154,14 @@ export interface TranscriptWatch {
   reader: TranscriptReader
   formatter: ConversationalFormatter
   view: ConversationalView
+  reactor: StatusReactor
   timer: ReturnType<typeof setInterval>
   /** Consecutive ticks with no new records. Used to detect session rotation. */
   emptyTicks: number
   /** Whether we already posted a "waiting for approval" notification. */
   waitingNotified: boolean
+  /** Timestamp of the approval buttons message (for clearing buttons after action). */
+  approvalTs?: string
 }
 
 /** Minimal stub for panes registered without a live JSONL file. */
@@ -39,6 +177,8 @@ const ROTATION_CHECK_TICKS = 10
 const FORWARDED_TTL_MS = 30_000
 /** Directory where PermissionRequest hooks write marker files. */
 const WAITING_DIR = join(homedir(), '.config', 'perch', 'waiting')
+/** Directory where state hooks write event files. */
+const HOOK_STATE_DIR = join(homedir(), '.config', 'perch', 'hook-state')
 
 /**
  * Monitors Claude Code JSONL transcript files and posts conversational updates
@@ -58,7 +198,7 @@ export class TranscriptMonitor {
    *   file so only new content is posted. Pass false for fresh sessions (ask)
    *   where you want to capture output from the beginning.
    */
-  async watch(paneId: string, jsonlPath: string, poster: Poster, threadTs: string, plugin?: IToolPlugin, startFromEnd = true, claudePid?: number): Promise<void> {
+  async watch(paneId: string, jsonlPath: string, poster: Poster, threadTs: string, plugin?: IToolPlugin, startFromEnd = true, claudePid?: number, parentTs?: string): Promise<void> {
     if (this._watches.has(paneId)) return
     // Promote stub to full watch if one exists
     this._stubs.delete(paneId)
@@ -68,16 +208,22 @@ export class TranscriptMonitor {
 
     const formatter = new ConversationalFormatter()
     const view = poster.makeConversationalView(threadTs)
+    const effectiveParentTs = parentTs ?? threadTs
+    const reactor = new StatusReactor(poster, effectiveParentTs, threadTs)
+
+    // No indicators on startup — only activate when actual JSONL activity is detected
 
     const entry: TranscriptWatch = {
       paneId,
       threadTs,
+      parentTs: effectiveParentTs,
       plugin,
       poster,
       claudePid,
       reader,
       formatter,
       view,
+      reactor,
       emptyTicks: 0,
       waitingNotified: false,
       timer: setInterval(() => {
@@ -112,6 +258,7 @@ export class TranscriptMonitor {
     if (!watch) return
     clearInterval(watch.timer)
     void watch.reader.close()
+    watch.reactor.dispose()
     if (watch.threadTs) this._threadToPane.delete(watch.threadTs)
     this._watches.delete(paneId)
   }
@@ -140,8 +287,17 @@ export class TranscriptMonitor {
    * JSONL echoes it back as a user record, the monitor will suppress the
    * redundant ":speech_balloon: User:" post.
    */
-  recordForwardedText(paneId: string, text: string): void {
+  recordForwardedText(paneId: string, text: string, messageTs?: string): void {
     this._forwardedTexts.set(paneId, { text: text.trim(), ts: Date.now() })
+    // Update reactor to target the user's message for status reactions
+    if (messageTs) {
+      const watch = this._watches.get(paneId)
+      if (watch) {
+        // Clear old reaction from previous message
+        watch.reactor.transition('none').catch(() => {})
+        watch.reactor.setTarget(messageTs)
+      }
+    }
   }
 
   /** Manually trigger a tick — exposed for testing. */
@@ -153,6 +309,24 @@ export class TranscriptMonitor {
     const entry = this._watches.get(paneId)
     if (!entry) return
 
+    // Process hook state events (Stop, UserPromptSubmit, etc.)
+    const hookEvents = await this._consumeHookEvents(entry)
+    for (const hookEvent of hookEvents) {
+      if (hookEvent === 'stop') {
+        await entry.reactor.transition('white_check_mark')
+      } else if (hookEvent === 'prompt-submit') {
+        // User submitted a new prompt — reset and re-activate
+        entry.reactor.reset()
+        await entry.reactor.transition('thinking_face')
+        entry.reactor.activate()
+      } else if (hookEvent === 'pre-tool-use') {
+        await entry.reactor.transition('wrench')
+        entry.reactor.activate()
+      } else if (hookEvent === 'notification') {
+        await entry.reactor.transition('eyes')
+      }
+    }
+
     let records
     try {
       records = await entry.reader.readNew()
@@ -163,27 +337,55 @@ export class TranscriptMonitor {
 
     if (records.length === 0) {
       entry.emptyTicks++
+
+      // Typing lease and stall timers are managed by StatusReactor (timer-based, not tick-based)
+
       // Check if Claude is waiting for permission approval (marker file from hook)
       if (!entry.waitingNotified) {
-        const waiting = await this._isWaitingForApproval(entry)
-        if (waiting) {
-          entry.waitingNotified = true
+        const payload = await this._getWaitingPayload(entry)
+        if (payload) {
           try {
-            const tool = entry.formatter.lastToolDescription
+            const tool = formatWaitingPayload(payload) || entry.formatter.lastToolDescription
+            const toolName = payload.tool_name as string | undefined
+            const sessionId = entry.reader.filePath.split('/').pop()?.replace('.jsonl', '') ?? ''
+            const isHookApproval = toolName === 'ExitPlanMode' || toolName === 'EnterPlanMode'
+
             const msg = [
               `:hourglass_flowing_sand: *Waiting for approval*`,
               tool ? `> ${tool}` : '',
-              `\`accept\` — Yes  ·  \`reject\` — No  ·  \`escape\` — Dismiss`,
             ].filter(Boolean).join('\n')
-            await entry.poster.postToThread(entry.threadTs, msg)
+
+            let ts: string
+            if (isHookApproval && sessionId) {
+              // Hook-based approval: buttons write a response file to unblock the hook
+              ;({ ts } = await entry.poster.postApprovalButtons(entry.threadTs, msg, `hook:${sessionId}`, [
+                { label: 'Approve', key: 'allow', style: 'primary' },
+                { label: 'Reject', key: 'deny', style: 'danger' },
+              ]))
+            } else {
+              // Key-based approval: buttons send keystrokes to the pane
+              ;({ ts } = await entry.poster.postApprovalButtons(entry.threadTs, msg, paneId, [
+                { label: 'Accept', key: 'Enter', style: 'primary' },
+                { label: 'Reject', key: 'Escape', style: 'danger' },
+              ]))
+            }
+            entry.approvalTs = ts
+            entry.waitingNotified = true
           } catch (err) {
+            // Don't set waitingNotified on failure — prevents retry loop
             console.error(`[transcript] waiting notification failed:`, err)
           }
         }
       } else {
-        // Clear notification once marker file is gone
-        const stillWaiting = await this._isWaitingForApproval(entry)
-        if (!stillWaiting) entry.waitingNotified = false
+        // Clear notification and buttons once marker file is gone
+        const payload = await this._getWaitingPayload(entry)
+        if (!payload) {
+          entry.waitingNotified = false
+          if (entry.approvalTs) {
+            entry.poster.clearButtons(entry.approvalTs, ':white_check_mark: Resolved').catch(() => {})
+            entry.approvalTs = undefined
+          }
+        }
       }
       if (entry.emptyTicks >= ROTATION_CHECK_TICKS) {
         entry.emptyTicks = 0
@@ -194,6 +396,16 @@ export class TranscriptMonitor {
 
     entry.emptyTicks = 0
     entry.waitingNotified = false
+    if (entry.approvalTs) {
+      entry.poster.clearButtons(entry.approvalTs, ':white_check_mark: Resolved').catch(() => {})
+      entry.approvalTs = undefined
+    }
+
+    // Activate typing lease and stall timers on first real activity
+    if (entry.reactor.current === 'none') {
+      await entry.reactor.transition('eyes')
+    }
+    entry.reactor.activate()
 
     console.log(`[transcript-tick] ${paneId}: ${records.length} new records, types: ${records.map(r => r.type).join(', ')}`)
 
@@ -233,12 +445,16 @@ export class TranscriptMonitor {
     for (const action of [...snippets, ...rest]) {
       try {
         if (action.type === 'update_status') {
+          await entry.reactor.transition('wrench')
           await entry.view.updateStatus(action.text)
         } else if (action.type === 'post_response') {
+          await entry.reactor.transition('speech_balloon')
           await entry.view.postResponse(action.text)
         } else if (action.type === 'update_response') {
+          await entry.reactor.transition('speech_balloon')
           await entry.view.updateResponse(action.text)
         } else if (action.type === 'post_user') {
+          await entry.reactor.transition('thinking_face')
           await entry.view.postUser(action.text)
         } else if (action.type === 'post_snippet') {
           const title = (action as SlackAction & { title?: string }).title
@@ -246,21 +462,54 @@ export class TranscriptMonitor {
         }
       } catch (err) {
         console.error(`[transcript] slack action failed (${action.type}):`, err)
+        await entry.reactor.transition('x').catch(() => {})
       }
+    }
+
+    // Done detection is handled by the Stop hook (writes state file consumed above).
+  }
+
+  /**
+   * Read and consume the hook state file for a session.
+   * Returns the event type ('stop', 'prompt-submit', 'notification', 'pre-tool-use') or null.
+   */
+  /**
+   * Read and consume all hook state events for a session.
+   * Returns array of event strings in order (e.g., ['prompt-submit', 'pre-tool-use', 'stop']).
+   */
+  private async _consumeHookEvents(entry: TranscriptWatch): Promise<string[]> {
+    const jsonlName = entry.reader.filePath.split('/').pop() ?? ''
+    const sessionId = jsonlName.replace('.jsonl', '')
+    if (!sessionId) return []
+    const stateFile = join(HOOK_STATE_DIR, `${sessionId}.events`)
+    try {
+      const { readFile, writeFile } = await import('fs/promises')
+      const content = await readFile(stateFile, 'utf-8')
+      await writeFile(stateFile, '') // clear — don't process the same events twice
+      const events = content.trim().split('\n').filter(Boolean)
+      if (events.length > 0) console.error(`[hook-state] consumed [${events.join(', ')}] for ${sessionId}`)
+      return events
+    } catch {
+      return []
     }
   }
 
   /**
-   * Check if a PermissionRequest marker file exists for this watch's Claude process.
-   * The hook writes to ~/.config/perch/waiting/<pid>.
+   * Check if a PermissionRequest marker file exists for this watch's Claude session.
+   * The hook writes JSON payload to ~/.config/perch/waiting/<session-id>.json.
+   * Returns the parsed payload if waiting, or null.
    */
-  private async _isWaitingForApproval(entry: TranscriptWatch): Promise<boolean> {
-    if (!entry.claudePid) return false
+  private async _getWaitingPayload(entry: TranscriptWatch): Promise<Record<string, unknown> | null> {
+    // Extract session ID from JSONL path: .../projects/<cwd>/<session-id>.jsonl
+    const jsonlName = entry.reader.filePath.split('/').pop() ?? ''
+    const sessionId = jsonlName.replace('.jsonl', '')
+    if (!sessionId) return null
     try {
-      await access(join(WAITING_DIR, String(entry.claudePid)))
-      return true
+      const { readFile } = await import('fs/promises')
+      const content = await readFile(join(WAITING_DIR, `${sessionId}.json`), 'utf-8')
+      return JSON.parse(content)
     } catch {
-      return false
+      return null
     }
   }
 
@@ -311,5 +560,34 @@ export class TranscriptMonitor {
     entry.reader = new TranscriptReader(newestPath)
     // Read from end — we only want new content going forward
     await entry.reader.seekToEnd()
+  }
+}
+
+/**
+ * Format the PermissionRequest hook payload into a human-readable tool description.
+ */
+function formatWaitingPayload(payload: Record<string, unknown>): string {
+  const toolName = payload.tool_name as string | undefined
+  const toolInput = payload.tool_input as Record<string, unknown> | undefined
+  if (!toolName) return ''
+
+  const path = toolInput?.file_path as string | undefined
+  const command = toolInput?.command as string | undefined
+  const description = toolInput?.description as string | undefined
+  const pattern = toolInput?.pattern as string | undefined
+  const short = (s: string, max = 50) => {
+    const base = s.includes('/') ? s.split('/').pop()! : s
+    return base.length <= max ? base : base.slice(0, max - 1) + '…'
+  }
+
+  switch (toolName) {
+    case 'Bash': return `:terminal: ${short(description ?? command ?? 'Run command', 60)}`
+    case 'Write': return `:pencil2: Write \`${short(path ?? '...')}\``
+    case 'Edit':
+    case 'MultiEdit': return `:pencil2: Edit \`${short(path ?? '...')}\``
+    case 'Read': return `:page_facing_up: Read \`${short(path ?? '...')}\``
+    case 'Grep': return `:mag: Search for \`${short(pattern ?? '...')}\``
+    case 'Glob': return `:open_file_folder: Find files \`${short(pattern ?? '...')}\``
+    default: return `:gear: ${toolName}`
   }
 }

@@ -30,10 +30,15 @@ const CURSOR = ' ▌'
 export class ConversationalFormatter {
   private _pendingTools: string[] = []
   private _responseStarted = false
+  private _lastToolLine = ''
+  private _lastToolRepeatCount = 0
   /** True when the last assistant record had stop_reason 'tool_use' (may be waiting for approval). */
   waitingForToolResult = false
   /** Description of the last tool call, shown in "waiting for approval" messages. */
   lastToolDescription = ''
+
+  /** True while a response is being streamed (cursor appended, not yet end_turn). */
+  get isStreaming(): boolean { return this._responseStarted }
 
   processRecords(records: TranscriptRecord[]): SlackAction[] {
     const actions: SlackAction[] = []
@@ -65,7 +70,18 @@ export class ConversationalFormatter {
     }
 
     if (toolCalls.length > 0) {
-      this._pendingTools.push(...toolCalls.map(formatToolCall))
+      // Dedup consecutive identical tool descriptions (e.g., reading same file)
+      for (const tool of toolCalls) {
+        const line = formatToolCall(tool)
+        if (line === this._lastToolLine) {
+          this._lastToolRepeatCount++
+          this._pendingTools[this._pendingTools.length - 1] = `${line} (×${this._lastToolRepeatCount + 1})`
+        } else {
+          this._pendingTools.push(line)
+          this._lastToolLine = line
+          this._lastToolRepeatCount = 0
+        }
+      }
 
       // Post content from Write tool calls targeting .md files as snippets
       for (const tool of toolCalls) {
@@ -95,6 +111,8 @@ export class ConversationalFormatter {
         // Final chunk — no cursor, reset state for next turn
         const type = this._responseStarted ? 'update_response' : 'post_response'
         this._pendingTools = []
+        this._lastToolLine = ''
+        this._lastToolRepeatCount = 0
         this._responseStarted = false
         actions.push({ type, text: formatted })
       } else {
@@ -189,10 +207,39 @@ function shorten(s: string, max = 50): string {
 }
 
 export function toSlackMrkdwn(text: string): string {
-  return text
-    .replace(/\*\*(.+?)\*\*/g, '*$1*')
-    .replace(/__(.+?)__/g, '*$1*')
-    .replace(/\[([^\]]+)\]\((https?:\/\/[^)]+)\)/g, '<$2|$1>')
-    .replace(/^#{1,6}\s+(.+)$/gm, '*$1*')
-    .replace(/~~(.+?)~~/g, '~$1~')
+  const placeholders: string[] = []
+  function ph(value: string): string {
+    const key = `\x00SL${placeholders.length}\x00`
+    placeholders.push(value)
+    return key
+  }
+
+  let result = text
+
+  // 1) Protect fenced code blocks (```...```)
+  result = result.replace(/(```(?:[^\n]*\n)?[\s\S]*?```)/g, m => ph(m))
+
+  // 2) Protect inline code (`...`)
+  result = result.replace(/(`[^`]+`)/g, m => ph(m))
+
+  // 3) HTML entity escaping (on remaining non-code text)
+  result = result
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+
+  // 4) Markdown → mrkdwn conversions
+  result = result.replace(/\*\*(.+?)\*\*/g, '*$1*')
+  result = result.replace(/__(.+?)__/g, '*$1*')
+  result = result.replace(/\[([^\]]+)\]\((https?:\/\/[^)]+)\)/g, (_, label, url) =>
+    `<${url.replace(/&amp;/g, '&')}|${label}>`)
+  result = result.replace(/^#{1,6}\s+(.+)$/gm, '*$1*')
+  result = result.replace(/~~(.+?)~~/g, '~$1~')
+
+  // 5) Restore placeholders in reverse order
+  for (let i = placeholders.length - 1; i >= 0; i--) {
+    result = result.replace(`\x00SL${i}\x00`, placeholders[i]!)
+  }
+
+  return result
 }

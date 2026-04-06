@@ -1,5 +1,5 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { Poster } from './poster.js'
+import { beforeEach, describe, expect, it, vi, afterEach } from 'vitest'
+import { Poster, ConversationalView, MAX_POST_LENGTH, MAX_UPDATE_LENGTH } from './poster.js'
 import type { WebClient } from '@slack/web-api'
 
 function makeClient() {
@@ -10,13 +10,26 @@ function makeClient() {
   } as unknown as WebClient
 }
 
+function makeReadClient() {
+  return {
+    chat: {
+      getPermalink: vi.fn().mockResolvedValue({ permalink: 'https://slack.com/p/123', ok: true }),
+    },
+    conversations: {
+      replies: vi.fn().mockResolvedValue({ messages: [], ok: true }),
+    },
+  } as unknown as WebClient
+}
+
 describe('Poster', () => {
   let client: WebClient
+  let readClient: WebClient
   let poster: Poster
 
   beforeEach(() => {
     client = makeClient()
-    poster = new Poster(client, 'C0TEST')
+    readClient = makeReadClient()
+    poster = new Poster(client, readClient, 'C0TEST')
   })
 
   describe('post', () => {
@@ -32,11 +45,11 @@ describe('Poster', () => {
       expect(ts).toBe('111.222')
     })
 
-    it('truncates text longer than 3000 chars', async () => {
-      const long = 'x'.repeat(4000)
+    it('truncates text longer than MAX_POST_LENGTH', async () => {
+      const long = 'x'.repeat(MAX_POST_LENGTH + 1000)
       await poster.post(long)
       const call = vi.mocked(client.chat.postMessage).mock.calls[0]![0]
-      expect((call.text as string).length).toBeLessThanOrEqual(3003) // 3000 + "..."
+      expect((call.text as string).length).toBeLessThanOrEqual(MAX_POST_LENGTH)
     })
   })
 
@@ -77,121 +90,172 @@ describe('Poster', () => {
   })
 
   describe('update', () => {
-    it('calls chat.update with channel, ts, and truncated text', async () => {
+    it('calls chat.update with higher limit than postMessage', async () => {
       ;(client.chat as any).update = vi.fn().mockResolvedValue({ ok: true })
-      await poster.update('111.222', 'updated text')
-      expect((client.chat as any).update).toHaveBeenCalledWith({
-        channel: 'C0TEST',
-        ts: '111.222',
-        text: 'updated text',
-      })
+      // 3500 chars: exceeds MAX_POST_LENGTH (3000) but within MAX_UPDATE_LENGTH (4000)
+      const long = 'x'.repeat(3500)
+      await poster.update('111.222', long)
+      const call = (client.chat as any).update.mock.calls[0]![0]
+      expect(call.text).toBe(long)
     })
   })
 
   describe('truncation boundary', () => {
-    it('does not truncate at exactly 3000 chars', async () => {
-      const exact = 'x'.repeat(3000)
+    it('does not truncate at exactly MAX_POST_LENGTH', async () => {
+      const exact = 'x'.repeat(MAX_POST_LENGTH)
       await poster.post(exact)
       const call = vi.mocked(client.chat.postMessage).mock.calls[0]![0]
       expect(call.text).toBe(exact)
     })
 
-    it('truncates at 3001 chars', async () => {
-      const over = 'x'.repeat(3001)
+    it('truncates at MAX_POST_LENGTH + 1', async () => {
+      const over = 'x'.repeat(MAX_POST_LENGTH + 1)
       await poster.post(over)
       const call = vi.mocked(client.chat.postMessage).mock.calls[0]![0]
       expect((call.text as string).endsWith('...')).toBe(true)
-      expect((call.text as string).length).toBe(3000)
+      expect((call.text as string).length).toBe(MAX_POST_LENGTH)
     })
   })
 
-  describe('makeLiveView', () => {
-    it('returns a LiveView instance', () => {
-      const liveView = poster.makeLiveView('thread-ts-1')
-      expect(liveView).toBeDefined()
-      expect(typeof liveView.update).toBe('function')
-      expect(typeof liveView.transition).toBe('function')
-    })
-  })
 })
 
-describe('LiveView', () => {
+describe('ConversationalView', () => {
   let client: WebClient
+  let readClient: WebClient
   let poster: Poster
+  let view: ConversationalView
+  let tsCtr: number
 
   beforeEach(() => {
-    client = makeClient()
-    ;(client.chat as any).update = vi.fn().mockResolvedValue({ ok: true })
-    poster = new Poster(client, 'C0TEST')
+    vi.useFakeTimers()
+    tsCtr = 0
+    client = {
+      chat: {
+        postMessage: vi.fn().mockImplementation(() =>
+          Promise.resolve({ ts: String(++tsCtr) + '.000', ok: true })),
+        update: vi.fn().mockResolvedValue({ ok: true }),
+      },
+    } as unknown as WebClient
+    readClient = {
+      conversations: {
+        replies: vi.fn().mockResolvedValue({ messages: [], ok: true }),
+      },
+    } as unknown as WebClient
+    poster = new Poster(client, readClient, 'C0TEST')
+    view = poster.makeConversationalView('thread.ts')
   })
 
-  it('posts a new thread message on first update (no existing _liveTs)', async () => {
-    const liveView = poster.makeLiveView('thread-ts-1')
-    await liveView.update('first update')
-    expect(client.chat.postMessage).toHaveBeenCalledWith(
-      expect.objectContaining({ thread_ts: 'thread-ts-1', text: 'first update' })
-    )
+  afterEach(() => {
+    vi.useRealTimers()
   })
 
-  it('edits the existing message on subsequent updates', async () => {
-    const liveView = poster.makeLiveView('thread-ts-1')
-    await liveView.update('first')
-    const postedTs = '111.222' // from mock
+  describe('updateStatus — two-tier throttling', () => {
+    it('edits status in place with 1500ms throttle', async () => {
+      await view.updateStatus('tool 1')
+      expect(client.chat.postMessage).toHaveBeenCalledTimes(1)
 
-    await liveView.update('second')
-    expect((client.chat as any).update).toHaveBeenCalledWith({
-      channel: 'C0TEST',
-      ts: postedTs,
-      text: 'second',
+      // Advance past the 1500ms status throttle
+      for (let i = 2; i <= 5; i++) {
+        vi.advanceTimersByTime(ConversationalView.STATUS_EDIT_INTERVAL_MS + 1)
+        await view.updateStatus(`tool ${i}`)
+      }
+      expect(client.chat.postMessage).toHaveBeenCalledTimes(1)
+      expect((client.chat as any).update).toHaveBeenCalledTimes(4)
+    })
+
+    it('buffers status edits within 1500ms throttle window', async () => {
+      await view.updateStatus('tool 1')
+      // Within throttle window — should buffer
+      vi.advanceTimersByTime(500)
+      await view.updateStatus('tool 2')
+      expect((client.chat as any).update).toHaveBeenCalledTimes(0)
+    })
+
+    it('flush sends buffered status text', async () => {
+      await view.updateStatus('tool 1')
+      await view.updateStatus('buffered tool')
+      expect((client.chat as any).update).toHaveBeenCalledTimes(0)
+
+      await view.flush()
+      expect((client.chat as any).update).toHaveBeenCalledTimes(1)
+      expect((client.chat as any).update).toHaveBeenCalledWith(
+        expect.objectContaining({ text: 'buffered tool' }),
+      )
+    })
+
+    it('uses MAX_UPDATE_LENGTH for status edits', async () => {
+      await view.updateStatus('tool 1')
+      vi.advanceTimersByTime(ConversationalView.STATUS_EDIT_INTERVAL_MS + 1)
+      // 3500 chars: exceeds MAX_POST_LENGTH (3000) but within MAX_UPDATE_LENGTH (4000)
+      const long = 'x'.repeat(3500)
+      await view.updateStatus(long)
+      const call = (client.chat as any).update.mock.calls[0]![0]
+      expect(call.text).toBe(long)
     })
   })
 
-  it('falls back to new post if chat.update fails (message deleted)', async () => {
-    const liveView = poster.makeLiveView('thread-ts-1')
-    await liveView.update('first')
+  describe('updateResponse — throttling + buffer threshold', () => {
+    it('creates response message on first call', async () => {
+      await view.postResponse('initial')
+      expect(client.chat.postMessage).toHaveBeenCalledTimes(1)
 
-    ;(client.chat as any).update.mockRejectedValueOnce(new Error('message_not_found'))
-    await liveView.update('recovery')
+      // updateResponse with enough chars should edit
+      vi.advanceTimersByTime(ConversationalView.RESPONSE_EDIT_INTERVAL_MS + 1)
+      await view.updateResponse('initial plus enough new text to pass threshold!!')
+      expect((client.chat as any).update).toHaveBeenCalledTimes(1)
+    })
 
-    // Should have posted a new message after failed update
-    const postCalls = vi.mocked(client.chat.postMessage).mock.calls
-    expect(postCalls).toHaveLength(2) // first + recovery
-    expect(postCalls[1]![0]).toEqual(
-      expect.objectContaining({ thread_ts: 'thread-ts-1', text: 'recovery' })
-    )
-  })
+    it('buffers response edits within 300ms throttle', async () => {
+      await view.postResponse('start')
+      // Immediately call — within throttle
+      await view.updateResponse('start plus a lot of new content here')
+      expect((client.chat as any).update).toHaveBeenCalledTimes(0)
+    })
 
-  it('transition always posts a new message (generates notification)', async () => {
-    const liveView = poster.makeLiveView('thread-ts-1')
-    await liveView.update('initial')
-    vi.mocked(client.chat.postMessage).mockClear()
+    it('skips edit when delta < BUFFER_THRESHOLD chars', async () => {
+      await view.postResponse('start')
+      vi.advanceTimersByTime(ConversationalView.RESPONSE_EDIT_INTERVAL_MS + 1)
+      // Delta is only 3 chars — below threshold
+      await view.updateResponse('start...')
+      expect((client.chat as any).update).toHaveBeenCalledTimes(0)
+    })
 
-    await liveView.transition('thinking → waiting')
-    expect(client.chat.postMessage).toHaveBeenCalledWith(
-      expect.objectContaining({ thread_ts: 'thread-ts-1', text: 'thinking → waiting' })
-    )
-  })
-
-  it('subsequent updates after transition edit the transition message', async () => {
-    const liveView = poster.makeLiveView('thread-ts-1')
-    await liveView.transition('state change')
-    const transitionTs = '111.222'
-
-    await liveView.update('delta after transition')
-    expect((client.chat as any).update).toHaveBeenCalledWith({
-      channel: 'C0TEST',
-      ts: transitionTs,
-      text: 'delta after transition',
+    it('flush sends buffered response regardless of threshold', async () => {
+      await view.postResponse('start')
+      await view.updateResponse('start...')
+      await view.flush()
+      expect((client.chat as any).update).toHaveBeenCalledTimes(1)
+      expect((client.chat as any).update).toHaveBeenCalledWith(
+        expect.objectContaining({ text: 'start...' }),
+      )
     })
   })
 
-  it('truncates long text in updates', async () => {
-    const liveView = poster.makeLiveView('thread-ts-1')
-    await liveView.update('first')
+  describe('flood control', () => {
+    it('disables edits after first failure', async () => {
+      await view.updateStatus('tool 1')
+      // Make edit fail
+      ;(client.chat as any).update.mockRejectedValueOnce(new Error('message_not_found'))
+      vi.advanceTimersByTime(ConversationalView.STATUS_EDIT_INTERVAL_MS + 1)
+      await view.updateStatus('tool 2')
+      // Should have fallen through to postMessage
+      expect(client.chat.postMessage).toHaveBeenCalledTimes(2)
 
-    const long = 'x'.repeat(4000)
-    await liveView.update(long)
-    const call = (client.chat as any).update.mock.calls[0]
-    expect(call[0].text.length).toBeLessThanOrEqual(3000)
+      // Subsequent updates should go straight to postMessage (no edit attempt)
+      vi.advanceTimersByTime(ConversationalView.STATUS_EDIT_INTERVAL_MS + 1)
+      await view.updateStatus('tool 3')
+      expect(client.chat.postMessage).toHaveBeenCalledTimes(3)
+      // Only 1 edit was ever attempted
+      expect((client.chat as any).update).toHaveBeenCalledTimes(1)
+    })
+  })
+
+  describe('readback verification (disabled)', () => {
+    it('does not post corrections — readback disabled due to Slack text normalization', async () => {
+      await view.postResponse('hello')
+      await view.postResponse('world')
+      // Only 2 postToThread calls — no readback, no corrections
+      expect(client.chat.postMessage).toHaveBeenCalledTimes(2)
+    })
   })
 })

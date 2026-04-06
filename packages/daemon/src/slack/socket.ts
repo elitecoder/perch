@@ -1,7 +1,7 @@
 import { App } from '@slack/bolt'
 import { WebClient } from '@slack/web-api'
 import { writeFile, mkdir } from 'fs/promises'
-import { tmpdir } from 'os'
+import { tmpdir, homedir } from 'os'
 import { join } from 'path'
 import { CommandRouter } from '../commands/router.js'
 import { makeTerminalHandlers } from '../commands/terminal.js'
@@ -31,8 +31,11 @@ export function createSocketApp(opts: SocketAppOptions): { app: App; poster: Pos
     socketMode: true,
   })
 
-  const client = new WebClient(botToken)
-  const poster = new Poster(client, channelId)
+  const writeClient = new WebClient(botToken)
+  const readClient = new WebClient(botToken, {
+    retryConfig: { retries: 2, factor: 2, minTimeout: 500, maxTimeout: 3000 },
+  })
+  const poster = new Poster(writeClient, readClient, channelId)
   const router = new CommandRouter()
   const startedAt = new Date()
 
@@ -83,6 +86,21 @@ export function createSocketApp(opts: SocketAppOptions): { app: App; poster: Pos
           return
         }
 
+        // Start a fresh thread for the same pane
+        if (lower === 'new thread' || lower === 'newthread') {
+          const sid = entry.paneId.match(/:(\d+)$/)?.[1] ?? entry.paneId.match(/%(\d+)$/)?.[1] ?? entry.paneId
+          const oldThreadTs = threadTs
+          const respond = async (text: string) => { await poster.post(text) }
+          await router.dispatch(`watch ${sid}`, respond)
+          // Post link to the new thread in the old thread
+          const { readState: rs } = await import('../config.js')
+          const newTs = rs().watchThreads?.[entry.paneId]
+          const link = newTs ? await poster.threadPermalink(newTs).catch(() => '') : ''
+          const linkText = link ? ` <${link}|Open new thread>` : ''
+          await poster.postToThread(oldThreadTs!, `:white_check_mark: Continuing in a new thread.${linkText}`)
+          return
+        }
+
         // Unwatch from within the thread
         if (lower === 'unwatch') {
           watcher.unwatch(entry.paneId)
@@ -94,13 +112,21 @@ export function createSocketApp(opts: SocketAppOptions): { app: App; poster: Pos
           return
         }
 
+        // Claude slash commands: "!clear" or ".clear" → sends "/clear" to Claude
+        if (cleaned.startsWith('!') || cleaned.startsWith('.')) {
+          const slashCmd = '/' + cleaned.slice(1)
+          watcher.recordForwardedText(entry.paneId, slashCmd, ts)
+          await adapter.sendText(entry.paneId, slashCmd)
+          return
+        }
+
         // Check if it's a key alias (esc, ctrl-c, etc.)
         const keyAliases = entry.plugin?.keyAliases ?? {}
         const keyAlias = keyAliases[lower]
         if (keyAlias) {
           await adapter.sendKey(entry.paneId, keyAlias)
         } else {
-          watcher.recordForwardedText(entry.paneId, cleaned)
+          watcher.recordForwardedText(entry.paneId, cleaned, ts)
           await adapter.sendText(entry.paneId, cleaned)
         }
         return
@@ -176,7 +202,7 @@ export function createSocketApp(opts: SocketAppOptions): { app: App; poster: Pos
           // Combine user text with file paths on separate lines
           const parts = userText ? [userText, '', ...paths] : paths
           const prompt = parts.join('\n')
-          watcher.recordForwardedText(entry.paneId, prompt)
+          watcher.recordForwardedText(entry.paneId, prompt, msg.ts)
           await adapter.sendText(entry.paneId, prompt)
         }
         return // Don't also forward msg.text via handleText
@@ -189,6 +215,44 @@ export function createSocketApp(opts: SocketAppOptions): { app: App; poster: Pos
   // @mentions
   app.event('app_mention', async ({ event, say }) => {
     await handleText(event.text, event.ts, event.thread_ts, say)
+  })
+
+  // Interactive button clicks (approval buttons)
+  app.action(/^perch_key:/, async ({ action, ack, body }) => {
+    await ack()
+    const btnAction = action as { action_id: string }
+    // action_id format: perch_key:<target>:<action>
+    // target is either a paneId (send key) or hook:<sessionId> (write response file)
+    const parts = btnAction.action_id.split(':')
+    const actionValue = parts.pop()!
+    const target = parts.slice(1).join(':')
+
+    try {
+      let label: string
+      if (target.startsWith('hook:')) {
+        // Hook-based approval: write response file to unblock the waiting hook
+        const sessionId = target.slice(5)
+        const waitingDir = join(homedir(), '.config', 'perch', 'waiting')
+        await writeFile(join(waitingDir, `${sessionId}.response`), actionValue)
+        label = actionValue === 'allow' ? 'Approved' : 'Rejected'
+      } else {
+        // Key-based approval: send keystroke to the pane
+        await adapter.sendKey(target, actionValue)
+        label = actionValue === 'Enter' ? 'Accepted' : 'Rejected'
+      }
+
+      const msg = body as { message?: { ts?: string }; channel?: { id?: string } }
+      if (msg.message?.ts && msg.channel?.id) {
+        await writeClient.chat.update({
+          channel: msg.channel.id,
+          ts: msg.message.ts,
+          text: `:white_check_mark: ${label}`,
+          blocks: [{ type: 'section', text: { type: 'mrkdwn', text: `:white_check_mark: ${label}` } }],
+        })
+      }
+    } catch (err) {
+      console.error(`[socket] button action failed:`, err)
+    }
   })
 
   return { app, poster }

@@ -3,9 +3,8 @@ import { detectAdapter } from './adapters/registry.js'
 import { ClaudeCodePlugin } from './plugins/builtin/claude-code.js'
 import { WatcherManager } from './watcher/manager.js'
 import { createSocketApp } from './slack/socket.js'
-import { readConfig, readState, writeState, ensureConfigDir } from './config.js'
-import { resolveClaudeSession } from './transcript/resolver.js'
-import { shortId } from './commands/watch.js'
+import { readConfig, readState, ensureConfigDir } from './config.js'
+import { resumeWatches } from './resume.js'
 
 const KEYCHAIN_SERVICE = 'dev.perch'
 
@@ -49,42 +48,7 @@ async function main() {
 
   // Resume watches saved before restart
   const state = readState()
-  const savedThreads = state.watchThreads ?? {}
-  const resumed: string[] = []
-  const newThreads: Record<string, string> = {}
-  for (const paneId of state.watches) {
-    try {
-      const savedPresetId = config.panePresets[paneId] ?? config.defaultPreset
-      const initialContent = await adapter.readPane(paneId)
-      const plugin =
-        (savedPresetId ? plugins.find(p => p.id === savedPresetId) : undefined) ??
-        plugins.find(p => p.detect(initialContent)) ??
-        plugins[plugins.length - 1]!
-
-      // Reuse the existing thread if we have one, otherwise start a new one
-      const oldTs = savedThreads[paneId]
-      let ts: string
-      if (oldTs) {
-        ts = oldTs
-      } else {
-        const res = await poster.post(`:eyes: Resumed watching \`${shortId(paneId)}\` with *${plugin.displayName}*`)
-        ts = res.ts
-      }
-
-      const resolved = await resolveClaudeSession(paneId, adapter)
-      if (resolved) {
-        watcher.watchTranscript(paneId, resolved.jsonlPath, poster, ts, plugin, true, resolved.pid)
-      } else {
-        await poster.postToThread(ts, ':warning: Could not locate Claude Code session file — is `claude` still running in this pane?')
-      }
-      resumed.push(paneId)
-      newThreads[paneId] = ts
-    } catch (err) {
-      console.error(`Perch: failed to resume watch for ${paneId}:`, err)
-    }
-  }
-  // Persist resumed watches with their thread timestamps
-  writeState({ watches: resumed, watchThreads: newThreads })
+  await resumeWatches(state, config, adapter, plugins, watcher, poster)
 }
 
 main().catch(err => {
@@ -110,3 +74,4 @@ export { ClaudeCodePlugin } from './plugins/builtin/claude-code.js'
 export { WatcherManager } from './watcher/manager.js'
 export { CommandRouter } from './commands/router.js'
 export { Poster } from './slack/poster.js'
+export { resumeWatches } from './resume.js'

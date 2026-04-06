@@ -3,7 +3,7 @@ import { makeWatchHandlers } from './watch.js'
 import type { ITerminalAdapter } from '../adapters/interface.js'
 import type { IToolPlugin } from '../plugins/interface.js'
 import type { WatcherManager } from '../watcher/manager.js'
-import type { Poster, LiveView } from '../slack/poster.js'
+import type { Poster } from '../slack/poster.js'
 
 function makeDeps() {
   const adapter: ITerminalAdapter = {
@@ -31,13 +31,7 @@ function makeDeps() {
     watch: { pollIntervalMs: 2000, notifyOnTransitions: [], suppressPatterns: [] },
   } as unknown as IToolPlugin
 
-  const mockLiveView = {
-    update: vi.fn().mockResolvedValue(undefined),
-    transition: vi.fn().mockResolvedValue(undefined),
-  } as unknown as LiveView
-
   const watcher: WatcherManager = {
-    watch: vi.fn(),
     watchTranscript: vi.fn().mockResolvedValue(undefined),
     registerWatch: vi.fn(),
     unwatch: vi.fn(),
@@ -50,10 +44,9 @@ function makeDeps() {
     post: vi.fn().mockResolvedValue({ ts: '12345.678' }),
     postToThread: vi.fn().mockResolvedValue({ ts: '12345.999' }),
     makeThreadPostFn: vi.fn().mockReturnValue(vi.fn()),
-    makeLiveView: vi.fn().mockReturnValue(mockLiveView),
   } as unknown as Poster
 
-  return { adapter, plugin, watcher, poster, mockLiveView }
+  return { adapter, plugin, watcher, poster }
 }
 
 describe('watch command handlers', () => {
@@ -87,8 +80,6 @@ describe('watch command handlers', () => {
       const postText = vi.mocked(deps.poster.post).mock.calls[0]![0] as string
       expect(postText).toContain('Watching')
       expect(postText).toContain('`0`')
-      // JSONL path: watcher.watch (scraping) is NOT called; watchTranscript or warning is used
-      expect(deps.watcher.watch).not.toHaveBeenCalled()
     })
 
     it('uses watchTranscript for claude preset when session resolves', async () => {
@@ -105,8 +96,10 @@ describe('watch command handlers', () => {
       const h = makeWatchHandlers(deps.adapter, [claudePlugin, deps.plugin], deps.watcher, deps.poster, async (id) => id)
       // With no getPanePid on the adapter, resolveClaudeSession returns null → warning posted
       await h.watch(['%0', '--preset', 'claude'], respond)
-      // Should NOT call scraping watch for claude
-      expect(deps.watcher.watch).not.toHaveBeenCalledWith('%0', deps.adapter, claudePlugin, expect.anything(), expect.anything())
+      // Should use either watchTranscript or registerWatch (depending on whether Claude session is found)
+      const usedTranscript = vi.mocked(deps.watcher.watchTranscript).mock.calls.length > 0
+      const usedRegister = vi.mocked(deps.watcher.registerWatch).mock.calls.length > 0
+      expect(usedTranscript || usedRegister).toBe(true)
     })
   })
 

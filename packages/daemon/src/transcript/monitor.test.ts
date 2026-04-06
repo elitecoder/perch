@@ -22,6 +22,10 @@ function jsonlPath(name = 'session.jsonl'): string {
 function makeMockPoster(view: Partial<ConversationalView>): Poster {
   return {
     makeConversationalView: () => view as ConversationalView,
+    addReaction: vi.fn().mockResolvedValue(undefined),
+    removeReaction: vi.fn().mockResolvedValue(undefined),
+    setTypingStatus: vi.fn().mockResolvedValue(undefined),
+    clearTypingStatus: vi.fn().mockResolvedValue(undefined),
   } as unknown as Poster
 }
 

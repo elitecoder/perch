@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.1.3 (2026-04-06)
+
+### Features
+
+- **Approval buttons** — permission requests now show interactive Accept/Reject buttons in Slack instead of text-only prompts, with hook-based approvals for plan mode
+- **Emoji status reactions** — parent watch messages show live emoji indicators (wrench, speech balloon, thinking, hourglass, checkmark) reflecting Claude's current state
+- **Typing indicator** — Slack assistant typing status ("is thinking...") with automatic lease renewal
+- **Stall detection** — hourglass at 10s and warning at 30s of inactivity, with debounced intermediate states
+- **State hooks** — new `state-hook.sh` and PreToolUse/Stop/UserPromptSubmit/Notification Claude Code hooks feed real-time state events to the daemon
+- **New thread command** — `new thread` in a watch thread starts a fresh thread and links back to the old one
+- **Slash command forwarding** — `!clear` or `.clear` in a watch thread sends `/clear` to Claude
+- **Smart text splitting** — content chunking now preserves code fence boundaries across Slack messages
+- **Slack mrkdwn escaping** — `toSlackMrkdwn` now properly escapes `&`, `<`, `>` in plain text while preserving code blocks and inline code
+- **Tool call deduplication** — consecutive identical tool calls are collapsed with a repeat count (e.g., `Read a.ts (x3)`)
+
+### Changes
+
+- **Remove LiveView / scraping watch** — all monitoring now uses transcript-based `ConversationalView`; removed `LiveView` class, `StateMachine` ticking, and `watch()` method from `WatcherManager`
+- **Two-tier throttling** — status edits throttled at 1.5s, response edits at 300ms with 40-char buffer threshold; `flush()` drains pending edits
+- **Higher edit limit** — `chat.update` now uses 4000-char limit (vs 3000 for `postMessage`)
+- **Extract resume logic** — watch resume moved to `resume.ts` module
+- **Separate read/write Slack clients** — poster now takes a dedicated read client with conservative retry config
+- **New Slack scopes** — added `assistant:write`, `reactions:read`, `reactions:write`; updated manifest with assistant view and `assistant_thread_started` event
+- **E2E CI job** — added self-hosted E2E runner to CI workflow
+
 ## 0.1.2 (2026-04-05)
 
 ### Features

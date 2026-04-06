@@ -19,7 +19,7 @@ import { makeWorkspaceHandlers } from './commands/workspace.js'
 import { makeWatchHandlers } from './commands/watch.js'
 import { makeSystemHandlers } from './commands/system.js'
 import type { ITerminalAdapter } from './adapters/interface.js'
-import type { LiveView, ConversationalView } from './slack/poster.js'
+import type { ConversationalView } from './slack/poster.js'
 import type { IToolPlugin } from './plugins/interface.js'
 
 // ---------------------------------------------------------------------------
@@ -48,14 +48,6 @@ export class MockPoster {
   async postCode(text: string) { return this.post('```\n' + text + '\n```') }
   async postError(msg: string) { void this.post(`:x: ${msg}`) }
   async update(_ts: string, _text: string) { /* no-op */ }
-
-  makeLiveView(_threadTs: string): LiveView {
-    const self = this
-    return {
-      async update(text: string) { await self.post(text) },
-      async transition(text: string) { await self.post(text) },
-    } as LiveView
-  }
 
   makeConversationalView(threadTs: string): ConversationalView {
     const self = this
