@@ -55,7 +55,7 @@ describe('workspace command handlers', () => {
     it('creates session with name only and launches claude', async () => {
       await handlers.newClaude(['my-project'], respond)
       expect(adapter.createSession).toHaveBeenCalledWith('my-project', undefined)
-      expect(adapter.sendText).toHaveBeenCalledWith('tmux:new-session:@0:%0', 'claude')
+      expect(adapter.sendText).toHaveBeenCalledWith('tmux:new-session:@0:%0', 'claude --permission-mode auto')
       const text = respond.mock.calls[0]![0] as string
       expect(text).toContain('my-project')
       expect(text).toContain('`0`')

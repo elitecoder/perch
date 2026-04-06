@@ -18,7 +18,7 @@ export function makeWorkspaceHandlers(adapter: ITerminalAdapter): Record<string,
       await respond(':x: Session created but no pane found.')
       return
     }
-    await adapter.sendText(pane.id, 'claude')
+    await adapter.sendText(pane.id, 'claude --permission-mode auto')
     const sid = shortId(pane.id)
     await respond(
       `:white_check_mark: Created session *${name}* — \`${sid}\`\nUse \`watch ${sid}\` to monitor.`,
