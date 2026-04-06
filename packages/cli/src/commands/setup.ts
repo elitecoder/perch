@@ -432,14 +432,18 @@ export async function runSetup(): Promise<void> {
     }
   }
 
-  // Step 4: Channel setup
-  ui.step(4, 'Channel setup')
+  // Step 3: Channel setup
+  ui.step(3, 'Channel setup')
+  ui.info('Create or pick a Slack channel for Perch, then find its ID:')
+  ui.info('  Open the channel → click the channel name at top → scroll to bottom')
+  ui.info('  The Channel ID looks like C07XXXXXX')
+  ui.info('\nMake sure to invite the Perch bot to the channel: /invite @Perch')
   const existingChannel = readConfig().slackChannelId
   let channelId = ''
   while (true) {
     const prompt = existingChannel
       ? `Slack Channel ID (Enter to keep ${existingChannel}):`
-      : 'Paste the Slack Channel ID where Perch should listen:'
+      : 'Paste the Slack Channel ID:'
     const raw = await input({ message: prompt })
     channelId = raw.trim() || existingChannel
     if (!channelId) { ui.error('Channel ID is required.'); continue }
