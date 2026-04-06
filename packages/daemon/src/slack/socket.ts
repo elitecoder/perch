@@ -110,9 +110,11 @@ export function createSocketApp(opts: SocketAppOptions): { app: App; poster: Pos
         }
 
         // Claude slash commands: "!clear" or ".clear" → sends "/clear" to Claude
+        // Don't recordForwardedText — slash commands are CLI-level and don't
+        // produce JSONL records, so there's nothing to suppress and activating
+        // the reactor would leave it stuck in a thinking/working loop.
         if (cleaned.startsWith('!') || cleaned.startsWith('.')) {
           const slashCmd = '/' + cleaned.slice(1)
-          watcher.recordForwardedText(entry.paneId, slashCmd, ts)
           await adapter.sendText(entry.paneId, slashCmd)
           return
         }
@@ -171,7 +173,8 @@ export function createSocketApp(opts: SocketAppOptions): { app: App; poster: Pos
 
   // Plain messages in the channel
   app.message(async ({ message, say }) => {
-    const msg = message as { text?: string; thread_ts?: string; ts?: string; bot_id?: string; files?: Array<{ url_private_download?: string; url_private?: string; name?: string; id?: string; mimetype?: string }>; subtype?: string }
+    const msg = message as { text?: string; thread_ts?: string; ts?: string; bot_id?: string; channel?: string; files?: Array<{ url_private_download?: string; url_private?: string; name?: string; id?: string; mimetype?: string }>; subtype?: string }
+    if (msg.channel && msg.channel !== channelId) return // only respond in the configured channel
     if (msg.bot_id) return // ignore other bots
     if (msg.subtype === 'message_changed') return
     // Dedup: Slack can fire multiple events for the same message
@@ -211,6 +214,7 @@ export function createSocketApp(opts: SocketAppOptions): { app: App; poster: Pos
 
   // @mentions
   app.event('app_mention', async ({ event, say }) => {
+    if (event.channel !== channelId) return // only respond in the configured channel
     await handleText(event.text, event.ts, event.thread_ts, say)
   })
 
