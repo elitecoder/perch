@@ -1,5 +1,4 @@
-import webApi from '@slack/web-api'
-const { WebClient } = webApi
+import { WebClient } from '@slack/web-api'
 
 export interface ValidationResult {
   ok: boolean

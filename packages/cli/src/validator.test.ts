@@ -1,20 +1,19 @@
 import { describe, expect, it, vi } from 'vitest'
 import { validateBotToken, validateAppToken, validateChannel } from './validator.js'
 
-vi.mock('@slack/web-api', () => {
-  const WebClient = vi.fn().mockImplementation(() => ({
+vi.mock('@slack/web-api', () => ({
+  WebClient: vi.fn().mockImplementation(() => ({
     auth: {
       test: vi.fn().mockResolvedValue({ ok: true }),
     },
     chat: {
       postMessage: vi.fn().mockResolvedValue({ ok: true }),
     },
-  }))
-  return { default: { WebClient }, WebClient }
-})
+  })),
+}))
 
-import webApi from '@slack/web-api'
-const MockWebClient = vi.mocked(webApi.WebClient)
+import { WebClient } from '@slack/web-api'
+const MockWebClient = vi.mocked(WebClient)
 
 describe('validateBotToken', () => {
   it('returns ok=true when auth.test succeeds', async () => {

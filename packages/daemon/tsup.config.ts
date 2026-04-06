@@ -8,4 +8,5 @@ export default defineConfig({
   clean: true,
   target: 'node20',
   external: ['keytar'],
+  noExternal: ['@slack/bolt', '@slack/web-api'],
 })
