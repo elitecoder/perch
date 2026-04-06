@@ -8,7 +8,7 @@ export default defineConfig({
   clean: true,
   target: 'node20',
   external: ['keytar'],
-  noExternal: ['@perch-dev/shared', '@slack/web-api'],
+  noExternal: ['@perch-dev/shared'],
   banner: {
     js: '#!/usr/bin/env node',
   },

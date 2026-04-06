@@ -18,6 +18,9 @@
   "devDependencies": {
     "typescript": "^5.4.0"
   },
+  "engines": {
+    "node": ">=20 <23 || >=25"
+  },
   "license": "Apache-2.0",
   "repository": {
     "type": "git",

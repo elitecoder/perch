@@ -1,3 +1,10 @@
+const nodeVersion = parseInt(process.versions.node.split('.')[0]!, 10)
+if (nodeVersion === 23 || nodeVersion === 24) {
+  console.error(`Error: Node.js v${process.versions.node} has a known ESM/CJS interop bug that breaks Perch.`)
+  console.error('Please upgrade to Node.js 25+:  nvm install 25')
+  process.exit(1)
+}
+
 import { runSetup } from './commands/setup.js'
 import { runStatus } from './commands/status.js'
 import { runRestart } from './commands/restart.js'
