@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.1.5 (2026-04-06)
+
+### Features
+
+- **Interactive prompt buttons** — Claude Code `AskUserQuestion`, `ExitPlanMode`, and permission prompts now show interactive choice/approval buttons in Slack threads
+- **Per-user Slack apps** — each user creates their own Slack app named `Perch-<username>` instead of sharing one
+- **Improved setup flow** — clearer Slack app install instructions, channel ID guidance, bot invite reminders, and auto-restart of cmux after enabling Automation Mode
+- **Auto permission mode** — `new` command launches Claude Code with `--permission-mode auto`
+- **Channel isolation** — daemon only responds in the configured Slack channel, ignoring messages elsewhere
+
+### Fixes
+
+- **False "needs attention" buttons** — stale marker files in `waiting/` and `interactive/` dirs are now cleaned up when new JSONL records arrive and auto-pruned after 60 seconds
+- **Buffered view text lost** — `flush()` is now called at the end of each tick so short status updates aren't dropped
+- **Response state not resetting** — user records consisting entirely of system-injected XML tags no longer leave the response state stuck
+- **System tag leakage** — `<system-reminder>` and similar tags injected by Claude Code are stripped from user records before posting to Slack
+- **Node 20-22/25+ compatibility** — reverted CJS interop hacks that broke on Node 24; restricted engine to supported versions
+
+### Changes
+
+- **Remove `assistant:write` scope** — removed assistant view and typing status scope from Slack manifest (not required for core functionality)
+- **Remove shared app setup** — simplified to single-user app creation flow
+- **Unit test coverage expansion** — added tests for session manager, screen-parser utils, claude-finder, socket handler, and error paths across all adapters and poster (+81 tests, 240 → 322)
+
 ## 0.1.4 (2026-04-06)
 
 ### Features
