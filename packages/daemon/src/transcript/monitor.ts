@@ -439,6 +439,11 @@ export class TranscriptMonitor {
       }
     }
 
+    // Flush any buffered status/response text so short updates aren't lost.
+    // The view buffers edits to avoid excessive API calls during streaming,
+    // but at tick boundaries we always want to deliver what we have.
+    await entry.view.flush()
+
     // Done detection is handled by the Stop hook (writes state file consumed above).
   }
 
