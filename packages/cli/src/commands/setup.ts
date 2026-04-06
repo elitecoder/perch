@@ -13,20 +13,7 @@ import { writeConfig, readConfig, CONFIG_DIR } from '@perch-dev/shared/config'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 
-const SLACK_MANIFEST = JSON.stringify({
-  display_information: { name: 'Perch', description: 'Remote-control Claude Code sessions from Slack — watch progress, approve tools, and send prompts', background_color: '#1a1a2e' },
-  settings: {
-    socket_mode_enabled: true,
-    org_deploy_enabled: false,
-    is_hosted: false,
-    token_rotation_enabled: false,
-    event_subscriptions: {
-      bot_events: ['message.channels', 'message.groups', 'message.im', 'app_mention'],
-    },
-  },
-  oauth_config: { scopes: { bot: ['app_mentions:read', 'assistant:write', 'chat:write', 'channels:read', 'groups:read', 'channels:history', 'groups:history', 'im:history', 'im:read', 'im:write', 'files:read', 'files:write', 'reactions:read', 'reactions:write'] } },
-  features: { bot_user: { display_name: 'perch', always_online: false } },
-}, null, 2)
+const SLACK_MANIFEST = readFileSync(join(__dirname, '../../../slack/manifest.json'), 'utf-8')
 
 const CMUX_BIN =
   process.env.CMUX_BIN ??
