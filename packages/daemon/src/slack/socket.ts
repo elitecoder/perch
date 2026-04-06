@@ -1,5 +1,7 @@
-import { App } from '@slack/bolt'
-import { WebClient } from '@slack/web-api'
+import pkg from '@slack/bolt'
+const { App } = pkg
+import webApi from '@slack/web-api'
+const { WebClient } = webApi
 import { writeFile, mkdir } from 'fs/promises'
 import { tmpdir, homedir } from 'os'
 import { join } from 'path'
