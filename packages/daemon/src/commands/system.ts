@@ -7,7 +7,7 @@ const HELP_TEXT = `
 *Perch Commands*
 
 *Sessions*
-\`list\` / \`sessions\`             — List active Claude sessions
+\`list\`                          — List active Claude sessions
 \`new <name> [--cwd <path>]\`    — Create session and launch \`claude\`
 
 *Watch*

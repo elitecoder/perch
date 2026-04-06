@@ -55,9 +55,6 @@ export function createSocketApp(opts: SocketAppOptions): { app: App; poster: Pos
 
   // `new <name> [--cwd <path>]` — create session and launch Claude
   router.register('new', workspaceHandlers.newClaude)
-  // `sessions` as alias for `list`
-  router.register('sessions', terminalHandlers.list)
-
   async function handleText(
     text: string,
     ts: string | undefined,

@@ -76,7 +76,6 @@ describe('E2E — Slack integration', () => {
       }
     }
     router.register('new', workspaceHandlers.newClaude)
-    router.register('sessions', terminalHandlers.list)
   }
 
   // -------------------------------------------------------------------------
@@ -367,15 +366,6 @@ describe('E2E — Slack integration', () => {
       expect(listMsg).toBeDefined()
     })
 
-    it('sessions — alias for list', async () => {
-      await handleText('sessions')
-      await wait(200)
-      const msgs = await getRecentMessages(3)
-      const listMsg = msgs.find(m =>
-        m.text.includes('No active Claude sessions') || m.text.includes('Claude sessions:')
-      )
-      expect(listMsg).toBeDefined()
-    })
   })
 
   // =========================================================================

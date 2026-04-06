@@ -193,7 +193,6 @@ export function registerE2ETests(provider: E2EProvider) {
       }
     }
     router.register('new', workspaceHandlers.newClaude)
-    router.register('sessions', terminalHandlers.list)
   }, 15_000)
 
   afterAll(async () => {
@@ -215,14 +214,7 @@ export function registerE2ETests(provider: E2EProvider) {
       expect(valid, `Unexpected list response: ${text}`).toBe(true)
     })
 
-    it('sessions — alias for list, same format', async () => {
-      poster.clear()
-      await handleText('sessions')
-      const text = poster.last()
-      const valid = text.includes('No active Claude sessions') || text.includes('*Claude sessions:*')
-      expect(valid, `Unexpected sessions response: ${text}`).toBe(true)
-    })
-  })
+})
 
   // -------------------------------------------------------------------------
   // Watch commands
