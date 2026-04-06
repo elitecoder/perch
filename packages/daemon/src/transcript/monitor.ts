@@ -1,4 +1,4 @@
-import { readdir, stat, access } from 'fs/promises'
+import { readdir, stat, access, unlink } from 'fs/promises'
 import { join, dirname } from 'path'
 import { homedir } from 'os'
 import type { IToolPlugin } from '../plugins/interface.js'
@@ -177,6 +177,8 @@ const ROTATION_CHECK_TICKS = 10
 const INTERACTIVE_CHECK_TICKS = 3
 /** How long (ms) a forwarded text stays suppressed. */
 const FORWARDED_TTL_MS = 30_000
+/** Marker files older than this (ms) are considered stale and ignored. */
+const MARKER_FILE_MAX_AGE_MS = 60_000
 /** Directory where PermissionRequest hooks write marker files. */
 const WAITING_DIR = join(homedir(), '.config', 'perch', 'waiting')
 /** Directory where state hooks write event files. */
@@ -376,6 +378,9 @@ export class TranscriptMonitor {
       entry.poster.clearButtons(entry.approvalTs, ':white_check_mark: Resolved').catch(() => {})
       entry.approvalTs = undefined
     }
+    // Claude is producing output — it's not waiting. Clean up stale marker files
+    // so they don't trigger false "needs attention" buttons on the next empty period.
+    await this._cleanupMarkerFiles(entry)
 
     // Activate typing lease and stall timers on first real activity
     if (entry.reactor.current === 'none') {
@@ -475,19 +480,30 @@ export class TranscriptMonitor {
     }
   }
 
+  /** Extract the session ID from a watch entry's JSONL path. */
+  private _sessionId(entry: TranscriptWatch): string {
+    const jsonlName = entry.reader.filePath.split('/').pop() ?? ''
+    return jsonlName.replace('.jsonl', '')
+  }
+
   /**
    * Check if a PermissionRequest marker file exists for this watch's Claude session.
    * The hook writes JSON payload to ~/.config/perch/waiting/<session-id>.json.
-   * Returns the parsed payload if waiting, or null.
+   * Returns the parsed payload if waiting, or null. Ignores stale files.
    */
   private async _getWaitingPayload(entry: TranscriptWatch): Promise<Record<string, unknown> | null> {
-    // Extract session ID from JSONL path: .../projects/<cwd>/<session-id>.jsonl
-    const jsonlName = entry.reader.filePath.split('/').pop() ?? ''
-    const sessionId = jsonlName.replace('.jsonl', '')
+    const sessionId = this._sessionId(entry)
     if (!sessionId) return null
+    const filePath = join(WAITING_DIR, `${sessionId}.json`)
     try {
+      const fileStat = await stat(filePath)
+      if (Date.now() - fileStat.mtimeMs > MARKER_FILE_MAX_AGE_MS) {
+        // Stale file — clean it up
+        await unlink(filePath).catch(() => {})
+        return null
+      }
       const { readFile } = await import('fs/promises')
-      const content = await readFile(join(WAITING_DIR, `${sessionId}.json`), 'utf-8')
+      const content = await readFile(filePath, 'utf-8')
       return JSON.parse(content)
     } catch {
       return null
@@ -496,19 +512,36 @@ export class TranscriptMonitor {
 
   /**
    * Check if an interactive prompt payload exists (from Notification or PreToolUse hooks).
-   * Returns the parsed payload if present, or null.
+   * Returns the parsed payload if present, or null. Ignores stale files.
    */
   private async _getInteractivePayload(entry: TranscriptWatch): Promise<Record<string, unknown> | null> {
-    const jsonlName = entry.reader.filePath.split('/').pop() ?? ''
-    const sessionId = jsonlName.replace('.jsonl', '')
+    const sessionId = this._sessionId(entry)
     if (!sessionId) return null
+    const filePath = join(INTERACTIVE_DIR, `${sessionId}.json`)
     try {
+      const fileStat = await stat(filePath)
+      if (Date.now() - fileStat.mtimeMs > MARKER_FILE_MAX_AGE_MS) {
+        // Stale file — clean it up
+        await unlink(filePath).catch(() => {})
+        return null
+      }
       const { readFile } = await import('fs/promises')
-      const content = await readFile(join(INTERACTIVE_DIR, `${sessionId}.json`), 'utf-8')
+      const content = await readFile(filePath, 'utf-8')
       return JSON.parse(content)
     } catch {
       return null
     }
+  }
+
+  /**
+   * Remove marker files for a session. Called when new JSONL records arrive,
+   * proving Claude is actively working and not waiting for input.
+   */
+  private async _cleanupMarkerFiles(entry: TranscriptWatch): Promise<void> {
+    const sessionId = this._sessionId(entry)
+    if (!sessionId) return
+    await unlink(join(WAITING_DIR, `${sessionId}.json`)).catch(() => {})
+    await unlink(join(INTERACTIVE_DIR, `${sessionId}.json`)).catch(() => {})
   }
 
   /**

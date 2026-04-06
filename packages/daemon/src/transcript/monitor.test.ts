@@ -213,6 +213,62 @@ describe('TranscriptMonitor', () => {
     monitor.dispose()
   })
 
+  it('cleans up marker files when new records arrive', async () => {
+    const path = jsonlPath('cleanup-test.jsonl')
+    await writeFile(path, '')
+
+    const postResponse = vi.fn().mockResolvedValue(undefined)
+    const poster = makeMockPoster({
+      updateStatus: vi.fn().mockResolvedValue(undefined),
+      postResponse,
+      postUser: vi.fn().mockResolvedValue(undefined),
+    })
+
+    const monitor = new TranscriptMonitor()
+    await monitor.watch('pane:8', path, poster, 'ts-8')
+
+    // Simulate stale marker files that a hook left behind
+    const { mkdir: mkdirFs, writeFile: writeFs, access: accessFs } = await import('fs/promises')
+    const os = await import('os')
+    const pathMod = await import('path')
+    const waitingDir = pathMod.join(os.homedir(), '.config', 'perch', 'waiting')
+    const interactiveDir = pathMod.join(os.homedir(), '.config', 'perch', 'interactive')
+    await mkdirFs(waitingDir, { recursive: true })
+    await mkdirFs(interactiveDir, { recursive: true })
+
+    const sessionId = 'cleanup-test'
+    await writeFs(pathMod.join(waitingDir, `${sessionId}.json`), '{"tool_name":"Bash"}')
+    await writeFs(pathMod.join(interactiveDir, `${sessionId}.json`), '{"notification_type":"permission_prompt"}')
+
+    // Write a JSONL record so the tick processes new records
+    await appendFile(
+      path,
+      JSON.stringify({
+        type: 'assistant',
+        isSidechain: false,
+        message: {
+          model: 'claude-sonnet-4-6',
+          id: 'msg_cleanup',
+          role: 'assistant',
+          content: [{ type: 'text', text: 'Working on it.' }],
+          stop_reason: 'end_turn',
+        },
+      }) + '\n',
+    )
+
+    await monitor.tick('pane:8')
+
+    // Marker files should be cleaned up
+    let waitingExists = true
+    let interactiveExists = true
+    try { await accessFs(pathMod.join(waitingDir, `${sessionId}.json`)); } catch { waitingExists = false }
+    try { await accessFs(pathMod.join(interactiveDir, `${sessionId}.json`)); } catch { interactiveExists = false }
+    expect(waitingExists).toBe(false)
+    expect(interactiveExists).toBe(false)
+
+    monitor.dispose()
+  })
+
   it('suppresses user echo for forwarded text after system tags are stripped', async () => {
     const path = jsonlPath('echo-test.jsonl')
     await writeFile(path, '')

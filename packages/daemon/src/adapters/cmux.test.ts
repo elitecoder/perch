@@ -42,6 +42,11 @@ describe('CmuxAdapter', () => {
   })
 
   describe('listSessions', () => {
+    it('throws when list-workspaces fails', async () => {
+      mockExeca.mockRejectedValueOnce(new Error('cmux not running') as never)
+      await expect(adapter.listSessions()).rejects.toThrow('cmux not running')
+    })
+
     it('returns empty array when no workspaces', async () => {
       mockOutput('')
       expect(await adapter.listSessions()).toEqual([])
@@ -107,6 +112,11 @@ describe('CmuxAdapter', () => {
   })
 
   describe('readPane', () => {
+    it('throws when capture-pane fails', async () => {
+      mockExeca.mockRejectedValueOnce(new Error('surface not found') as never)
+      await expect(adapter.readPane('cmux:workspace:1:surface:999')).rejects.toThrow('surface not found')
+    })
+
     it('calls capture-pane with surface ref and line count', async () => {
       mockOutput('some output')
       const result = await adapter.readPane('cmux:workspace:1:surface:5', 30)
@@ -150,6 +160,11 @@ describe('CmuxAdapter', () => {
   })
 
   describe('sendText', () => {
+    it('throws when send fails', async () => {
+      mockExeca.mockRejectedValueOnce(new Error('connection lost') as never)
+      await expect(adapter.sendText('cmux:workspace:1:surface:5', 'echo hi')).rejects.toThrow('connection lost')
+    })
+
     it('sends text then enter separately', async () => {
       mockOutput('')
       await adapter.sendText('cmux:workspace:1:surface:5', 'echo hello')

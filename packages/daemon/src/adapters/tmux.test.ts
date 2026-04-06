@@ -35,6 +35,11 @@ describe('TmuxAdapter', () => {
   })
 
   describe('listSessions', () => {
+    it('throws when list-sessions fails', async () => {
+      mockExeca.mockRejectedValueOnce(new Error('no server running') as never)
+      await expect(adapter.listSessions()).rejects.toThrow('no server running')
+    })
+
     it('returns empty array when no sessions', async () => {
       mockOutput('')
       expect(await adapter.listSessions()).toEqual([])
@@ -79,6 +84,11 @@ describe('TmuxAdapter', () => {
   })
 
   describe('readPane', () => {
+    it('throws when capture-pane fails', async () => {
+      mockExeca.mockRejectedValueOnce(new Error('pane not found') as never)
+      await expect(adapter.readPane('tmux:main:@0:%99')).rejects.toThrow('pane not found')
+    })
+
     it('calls capture-pane with correct target and line count', async () => {
       mockOutput('line1\nline2\n')
       const result = await adapter.readPane('tmux:main:@0:%1', 30)
@@ -98,6 +108,11 @@ describe('TmuxAdapter', () => {
   })
 
   describe('sendText', () => {
+    it('throws when send-keys fails', async () => {
+      mockExeca.mockRejectedValueOnce(new Error('tmux server not running') as never)
+      await expect(adapter.sendText('tmux:main:@0:%0', 'ls')).rejects.toThrow('tmux server not running')
+    })
+
     it('calls send-keys with text and Enter', async () => {
       mockOutput('')
       await adapter.sendText('tmux:main:@0:%0', 'ls -la')

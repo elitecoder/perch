@@ -100,6 +100,23 @@ describe('Poster', () => {
     })
   })
 
+  describe('error handling', () => {
+    it('propagates error when chat.postMessage rejects', async () => {
+      vi.mocked(client.chat.postMessage).mockRejectedValueOnce(new Error('channel_not_found'))
+      await expect(poster.post('hello')).rejects.toThrow('channel_not_found')
+    })
+
+    it('propagates error when postToThread rejects', async () => {
+      vi.mocked(client.chat.postMessage).mockRejectedValueOnce(new Error('invalid_auth'))
+      await expect(poster.postToThread('999.000', 'reply')).rejects.toThrow('invalid_auth')
+    })
+
+    it('propagates error when postError rejects', async () => {
+      vi.mocked(client.chat.postMessage).mockRejectedValueOnce(new Error('rate_limited'))
+      await expect(poster.postError('oops')).rejects.toThrow('rate_limited')
+    })
+  })
+
   describe('truncation boundary', () => {
     it('does not truncate at exactly MAX_POST_LENGTH', async () => {
       const exact = 'x'.repeat(MAX_POST_LENGTH)
@@ -117,6 +134,113 @@ describe('Poster', () => {
     })
   })
 
+  describe('postApprovalButtons', () => {
+    it('posts message with action blocks containing buttons', async () => {
+      await poster.postApprovalButtons('thread.1', 'Waiting', 'pane:1', [
+        { label: 'Accept', key: 'Enter', style: 'primary' },
+        { label: 'Reject', key: 'Escape', style: 'danger' },
+      ])
+      const call = vi.mocked(client.chat.postMessage).mock.calls[0]![0]
+      expect(call.thread_ts).toBe('thread.1')
+      expect(call.blocks).toBeDefined()
+      const actions = (call.blocks as any[]).find((b: any) => b.type === 'actions')
+      expect(actions.elements).toHaveLength(2)
+      expect(actions.elements[0].action_id).toBe('perch_key:pane:1:Enter')
+      expect(actions.elements[1].style).toBe('danger')
+    })
+  })
+
+  describe('postChoiceButtons', () => {
+    it('posts choice buttons with correct action_id format', async () => {
+      await poster.postChoiceButtons('thread.2', 'Pick one', 'pane:2', [
+        { label: 'Option A', index: 0 },
+        { label: 'Option B', index: 1 },
+      ])
+      const call = vi.mocked(client.chat.postMessage).mock.calls[0]![0]
+      const actions = (call.blocks as any[]).find((b: any) => b.type === 'actions')
+      expect(actions.elements[0].action_id).toBe('perch_key:pane:2:choice:0')
+      expect(actions.elements[1].action_id).toBe('perch_key:pane:2:choice:1')
+    })
+  })
+
+  describe('clearButtons', () => {
+    it('replaces buttons with text-only section', async () => {
+      ;(client.chat as any).update = vi.fn().mockResolvedValue({ ok: true })
+      await poster.clearButtons('msg.1', ':white_check_mark: Done')
+      const call = (client.chat as any).update.mock.calls[0]![0]
+      expect(call.ts).toBe('msg.1')
+      expect(call.blocks).toHaveLength(1)
+      expect(call.blocks[0].type).toBe('section')
+    })
+  })
+
+  describe('threadPermalink', () => {
+    it('returns permalink from readClient', async () => {
+      const url = await poster.threadPermalink('msg.2')
+      expect(url).toBe('https://slack.com/p/123')
+      expect(readClient.chat.getPermalink).toHaveBeenCalledWith({
+        channel: 'C0TEST',
+        message_ts: 'msg.2',
+      })
+    })
+  })
+
+  describe('addReaction', () => {
+    it('calls reactions.add', async () => {
+      ;(client as any).reactions = { add: vi.fn().mockResolvedValue({ ok: true }) }
+      await poster.addReaction('msg.3', 'eyes')
+      expect((client as any).reactions.add).toHaveBeenCalledWith({
+        channel: 'C0TEST', timestamp: 'msg.3', name: 'eyes',
+      })
+    })
+
+    it('silently ignores already_reacted error', async () => {
+      ;(client as any).reactions = { add: vi.fn().mockRejectedValue({ data: { error: 'already_reacted' } }) }
+      await expect(poster.addReaction('msg.3', 'eyes')).resolves.toBeUndefined()
+    })
+  })
+
+  describe('removeReaction', () => {
+    it('calls reactions.remove', async () => {
+      ;(client as any).reactions = { remove: vi.fn().mockResolvedValue({ ok: true }) }
+      await poster.removeReaction('msg.4', 'thinking_face')
+      expect((client as any).reactions.remove).toHaveBeenCalledWith({
+        channel: 'C0TEST', timestamp: 'msg.4', name: 'thinking_face',
+      })
+    })
+
+    it('silently ignores no_reaction error', async () => {
+      ;(client as any).reactions = { remove: vi.fn().mockRejectedValue({ data: { error: 'no_reaction' } }) }
+      await expect(poster.removeReaction('msg.4', 'eyes')).resolves.toBeUndefined()
+    })
+  })
+
+  describe('setTypingStatus / clearTypingStatus', () => {
+    it('calls assistant.threads.setStatus (silent on error)', async () => {
+      // No assistant scope — should not throw
+      await expect(poster.setTypingStatus('thread.3', 'is thinking...')).resolves.toBeUndefined()
+      await expect(poster.clearTypingStatus('thread.3')).resolves.toBeUndefined()
+    })
+  })
+
+  describe('postSnippetToThread', () => {
+    it('falls back to chunked text when files:write missing', async () => {
+      ;(client as any).filesUploadV2 = vi.fn().mockRejectedValue({ data: { error: 'missing_scope' } })
+      await poster.postSnippetToThread('thread.4', 'Short content', 'title.md')
+      // Should fall back to postToThread
+      expect(client.chat.postMessage).toHaveBeenCalled()
+      const text = vi.mocked(client.chat.postMessage).mock.calls[0]![0].text as string
+      expect(text).toContain('Short content')
+    })
+
+    it('uses filesUploadV2 when available', async () => {
+      ;(client as any).filesUploadV2 = vi.fn().mockResolvedValue({ ok: true })
+      await poster.postSnippetToThread('thread.5', 'File content', 'code.ts')
+      expect((client as any).filesUploadV2).toHaveBeenCalledWith(
+        expect.objectContaining({ content: 'File content', filename: 'code.ts' }),
+      )
+    })
+  })
 })
 
 describe('ConversationalView', () => {

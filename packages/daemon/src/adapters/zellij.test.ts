@@ -38,6 +38,11 @@ describe('ZellijAdapter', () => {
   })
 
   describe('listSessions', () => {
+    it('throws when list-sessions fails', async () => {
+      mockExeca.mockRejectedValueOnce(new Error('zellij not running') as never)
+      await expect(adapter.listSessions()).rejects.toThrow('zellij not running')
+    })
+
     it('returns empty array when no sessions', async () => {
       mockOutput('')
       expect(await adapter.listSessions()).toEqual([])
@@ -76,6 +81,11 @@ describe('ZellijAdapter', () => {
   })
 
   describe('readPane', () => {
+    it('throws when dump-screen fails', async () => {
+      mockExeca.mockRejectedValueOnce(new Error('session not found') as never)
+      await expect(adapter.readPane('zellij:unknown:0:0')).rejects.toThrow('session not found')
+    })
+
     it('calls dump-screen with session and pane ID', async () => {
       mockOutput('screen content here')
       const result = await adapter.readPane('zellij:my-project:0:0')
@@ -115,6 +125,11 @@ describe('ZellijAdapter', () => {
   })
 
   describe('sendText', () => {
+    it('throws when write-chars fails', async () => {
+      mockExeca.mockRejectedValueOnce(new Error('connection refused') as never)
+      await expect(adapter.sendText('zellij:proj:0:1', 'hi')).rejects.toThrow('connection refused')
+    })
+
     it('sends text via write-chars with --pane-id then Enter via write 10', async () => {
       mockOutput('') // write-chars
       mockOutput('') // write 10 (Enter)
