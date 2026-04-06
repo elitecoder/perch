@@ -152,6 +152,35 @@ export class Poster {
     return { ts: res.ts as string }
   }
 
+  /**
+   * Post a message with multiple choice buttons to a thread.
+   * Used for AskUserQuestion options, model selection, etc.
+   */
+  async postChoiceButtons(
+    threadTs: string,
+    text: string,
+    paneId: string,
+    choices: Array<{ label: string; index: number }>,
+  ): Promise<{ ts: string }> {
+    const res = await this.client.chat.postMessage({
+      channel: this.channelId,
+      thread_ts: threadTs,
+      text, // fallback
+      blocks: [
+        { type: 'section', text: { type: 'mrkdwn', text } },
+        {
+          type: 'actions',
+          elements: choices.map(c => ({
+            type: 'button' as const,
+            text: { type: 'plain_text' as const, text: c.label },
+            action_id: `perch_key:${paneId}:choice:${c.index}`,
+          })),
+        },
+      ],
+    })
+    return { ts: res.ts as string }
+  }
+
   /** Remove buttons from a message (replace with text-only). */
   async clearButtons(ts: string, text: string): Promise<void> {
     await this.client.chat.update({

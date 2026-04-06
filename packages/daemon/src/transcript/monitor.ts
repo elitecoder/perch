@@ -179,6 +179,8 @@ const FORWARDED_TTL_MS = 30_000
 const WAITING_DIR = join(homedir(), '.config', 'perch', 'waiting')
 /** Directory where state hooks write event files. */
 const HOOK_STATE_DIR = join(homedir(), '.config', 'perch', 'hook-state')
+/** Directory where Notification/PreToolUse hooks write interactive prompt payloads. */
+const INTERACTIVE_DIR = join(homedir(), '.config', 'perch', 'interactive')
 
 /**
  * Monitors Claude Code JSONL transcript files and posts conversational updates
@@ -340,46 +342,17 @@ export class TranscriptMonitor {
 
       // Typing lease and stall timers are managed by StatusReactor (timer-based, not tick-based)
 
-      // Check if Claude is waiting for permission approval (marker file from hook)
+      // Check if Claude is waiting for user input (permission approval or interactive prompt)
       if (!entry.waitingNotified) {
-        const payload = await this._getWaitingPayload(entry)
-        if (payload) {
-          try {
-            const tool = formatWaitingPayload(payload) || entry.formatter.lastToolDescription
-            const toolName = payload.tool_name as string | undefined
-            const sessionId = entry.reader.filePath.split('/').pop()?.replace('.jsonl', '') ?? ''
-            const isHookApproval = toolName === 'ExitPlanMode' || toolName === 'EnterPlanMode'
-
-            const msg = [
-              `:hourglass_flowing_sand: *Waiting for approval*`,
-              tool ? `> ${tool}` : '',
-            ].filter(Boolean).join('\n')
-
-            let ts: string
-            if (isHookApproval && sessionId) {
-              // Hook-based approval: buttons write a response file to unblock the hook
-              ;({ ts } = await entry.poster.postApprovalButtons(entry.threadTs, msg, `hook:${sessionId}`, [
-                { label: 'Approve', key: 'allow', style: 'primary' },
-                { label: 'Reject', key: 'deny', style: 'danger' },
-              ]))
-            } else {
-              // Key-based approval: buttons send keystrokes to the pane
-              ;({ ts } = await entry.poster.postApprovalButtons(entry.threadTs, msg, paneId, [
-                { label: 'Accept', key: 'Enter', style: 'primary' },
-                { label: 'Reject', key: 'Escape', style: 'danger' },
-              ]))
-            }
-            entry.approvalTs = ts
-            entry.waitingNotified = true
-          } catch (err) {
-            // Don't set waitingNotified on failure — prevents retry loop
-            console.error(`[transcript] waiting notification failed:`, err)
-          }
+        const posted = await this._tryPostInteractiveButtons(entry, paneId)
+        if (posted) {
+          entry.waitingNotified = true
         }
       } else {
-        // Clear notification and buttons once marker file is gone
-        const payload = await this._getWaitingPayload(entry)
-        if (!payload) {
+        // Clear notification and buttons once all marker files are gone
+        const waiting = await this._getWaitingPayload(entry)
+        const interactive = await this._getInteractivePayload(entry)
+        if (!waiting && !interactive) {
           entry.waitingNotified = false
           if (entry.approvalTs) {
             entry.poster.clearButtons(entry.approvalTs, ':white_check_mark: Resolved').catch(() => {})
@@ -511,6 +484,109 @@ export class TranscriptMonitor {
     } catch {
       return null
     }
+  }
+
+  /**
+   * Check if an interactive prompt payload exists (from Notification or PreToolUse hooks).
+   * Returns the parsed payload if present, or null.
+   */
+  private async _getInteractivePayload(entry: TranscriptWatch): Promise<Record<string, unknown> | null> {
+    const jsonlName = entry.reader.filePath.split('/').pop() ?? ''
+    const sessionId = jsonlName.replace('.jsonl', '')
+    if (!sessionId) return null
+    try {
+      const { readFile } = await import('fs/promises')
+      const content = await readFile(join(INTERACTIVE_DIR, `${sessionId}.json`), 'utf-8')
+      return JSON.parse(content)
+    } catch {
+      return null
+    }
+  }
+
+  /**
+   * Try to detect and post interactive buttons for a waiting Claude session.
+   * Checks both PermissionRequest (waiting/) and interactive prompts (interactive/).
+   * Returns true if buttons were posted.
+   */
+  private async _tryPostInteractiveButtons(entry: TranscriptWatch, paneId: string): Promise<boolean> {
+    // First check for interactive prompts (AskUserQuestion, etc.)
+    const interactive = await this._getInteractivePayload(entry)
+    if (interactive) {
+      const toolName = interactive.tool_name as string | undefined
+      const toolInput = interactive.tool_input as Record<string, unknown> | undefined
+
+      // AskUserQuestion: post choice buttons for each option
+      if (toolName === 'AskUserQuestion' && toolInput) {
+        const questions = toolInput.questions as Array<{ question: string; options?: Array<{ label: string }> }> | undefined
+        const firstQ = questions?.[0]
+        if (firstQ?.options?.length) {
+          try {
+            const msg = `:grey_question: *Claude is asking:*\n> ${firstQ.question}`
+            const choices = firstQ.options.map((o, i) => ({ label: o.label, index: i }))
+            const { ts } = await entry.poster.postChoiceButtons(entry.threadTs, msg, paneId, choices)
+            entry.approvalTs = ts
+            return true
+          } catch (err) {
+            console.error(`[transcript] interactive prompt failed:`, err)
+          }
+        }
+      }
+
+      // ExitPlanMode / EnterPlanMode: approval buttons
+      if (toolName === 'ExitPlanMode' || toolName === 'EnterPlanMode') {
+        try {
+          const label = toolName === 'ExitPlanMode' ? 'Exit Plan Mode' : 'Enter Plan Mode'
+          const msg = `:clipboard: *${label}*`
+          const { ts } = await entry.poster.postApprovalButtons(entry.threadTs, msg, paneId, [
+            { label: 'Approve', key: 'Enter', style: 'primary' },
+            { label: 'Reject', key: 'Escape', style: 'danger' },
+          ])
+          entry.approvalTs = ts
+          return true
+        } catch (err) {
+          console.error(`[transcript] plan mode prompt failed:`, err)
+        }
+      }
+
+      // Generic notification (idle_prompt, elicitation_dialog, etc.)
+      const notifType = interactive.notification_type as string | undefined
+      if (notifType && !toolName) {
+        try {
+          const msg = `:eyes: *Claude needs your attention*`
+          const { ts } = await entry.poster.postApprovalButtons(entry.threadTs, msg, paneId, [
+            { label: 'Continue', key: 'Enter', style: 'primary' },
+            { label: 'Cancel', key: 'Escape', style: 'danger' },
+          ])
+          entry.approvalTs = ts
+          return true
+        } catch (err) {
+          console.error(`[transcript] notification prompt failed:`, err)
+        }
+      }
+    }
+
+    // Fall back to PermissionRequest check (tool approval)
+    const payload = await this._getWaitingPayload(entry)
+    if (payload) {
+      try {
+        const tool = formatWaitingPayload(payload) || entry.formatter.lastToolDescription
+        const msg = [
+          `:hourglass_flowing_sand: *Waiting for approval*`,
+          tool ? `> ${tool}` : '',
+        ].filter(Boolean).join('\n')
+
+        const { ts } = await entry.poster.postApprovalButtons(entry.threadTs, msg, paneId, [
+          { label: 'Accept', key: 'Enter', style: 'primary' },
+          { label: 'Reject', key: 'Escape', style: 'danger' },
+        ])
+        entry.approvalTs = ts
+        return true
+      } catch (err) {
+        console.error(`[transcript] waiting notification failed:`, err)
+      }
+    }
+
+    return false
   }
 
   /**

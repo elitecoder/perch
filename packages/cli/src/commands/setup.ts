@@ -86,7 +86,16 @@ function perchHookEntries(): Record<string, Array<Record<string, unknown>>> {
         hooks: [{
           type: 'command',
           command: `sh "${join(HOOKS_DIR, 'pre-tool-use.sh')}"`,
-          timeout: 120,
+          timeout: 5,
+          _perch: PERCH_HOOK_MARKER,
+        }],
+      },
+      {
+        matcher: 'AskUserQuestion',
+        hooks: [{
+          type: 'command',
+          command: `sh "${join(HOOKS_DIR, 'pre-tool-use.sh')}"`,
+          timeout: 5,
           _perch: PERCH_HOOK_MARKER,
         }],
       },
@@ -130,10 +139,39 @@ function perchHookEntries(): Record<string, Array<Record<string, unknown>>> {
       matcher: '',
       hooks: [stateHook('prompt-submit')],
     }],
-    Notification: [{
-      matcher: '',
-      hooks: [stateHook('notification')],
-    }],
+    Notification: [
+      {
+        matcher: 'permission_prompt',
+        hooks: [{
+          type: 'command',
+          command: `sh "${join(HOOKS_DIR, 'notification-hook.sh')}"`,
+          timeout: 5,
+          _perch: PERCH_HOOK_MARKER,
+        }],
+      },
+      {
+        matcher: 'idle_prompt',
+        hooks: [{
+          type: 'command',
+          command: `sh "${join(HOOKS_DIR, 'notification-hook.sh')}"`,
+          timeout: 5,
+          _perch: PERCH_HOOK_MARKER,
+        }],
+      },
+      {
+        matcher: 'elicitation_dialog',
+        hooks: [{
+          type: 'command',
+          command: `sh "${join(HOOKS_DIR, 'notification-hook.sh')}"`,
+          timeout: 5,
+          _perch: PERCH_HOOK_MARKER,
+        }],
+      },
+      {
+        matcher: '',
+        hooks: [stateHook('notification', { async: true })],
+      },
+    ],
   }
 }
 
@@ -146,7 +184,7 @@ async function installClaudeHooks(): Promise<void> {
   // Copy hook scripts to ~/.config/perch/hooks/
   mkdirSync(HOOKS_DIR, { recursive: true })
   mkdirSync(WAITING_DIR, { recursive: true })
-  for (const name of ['permission-request.sh', 'post-tool-use.sh', 'pre-tool-use.sh', 'state-hook.sh']) {
+  for (const name of ['permission-request.sh', 'post-tool-use.sh', 'pre-tool-use.sh', 'state-hook.sh', 'notification-hook.sh']) {
     const src = join(HOOK_SOURCES, name)
     const dst = join(HOOKS_DIR, name)
     writeFileSync(dst, readFileSync(src, 'utf-8'), { mode: 0o755 })

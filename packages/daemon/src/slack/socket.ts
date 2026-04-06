@@ -218,24 +218,43 @@ export function createSocketApp(opts: SocketAppOptions): { app: App; poster: Pos
   app.action(/^perch_key:/, async ({ action, ack, body }) => {
     await ack()
     const btnAction = action as { action_id: string }
-    // action_id format: perch_key:<target>:<action>
-    // target is either a paneId (send key) or hook:<sessionId> (write response file)
+    // action_id formats:
+    //   perch_key:<paneId>:<key>            — send keystroke (Enter, Escape)
+    //   perch_key:<paneId>:choice:<index>   — send N Down keystrokes + Enter
+    //   perch_key:hook:<sessionId>:<action> — write response file
     const parts = btnAction.action_id.split(':')
-    const actionValue = parts.pop()!
-    const target = parts.slice(1).join(':')
 
     try {
       let label: string
-      if (target.startsWith('hook:')) {
-        // Hook-based approval: write response file to unblock the waiting hook
-        const sessionId = target.slice(5)
-        const waitingDir = join(homedir(), '.config', 'perch', 'waiting')
-        await writeFile(join(waitingDir, `${sessionId}.response`), actionValue)
-        label = actionValue === 'allow' ? 'Approved' : 'Rejected'
+
+      // Detect choice:<index> pattern: second-to-last part is 'choice', last is a number
+      const lastTwo = parts.slice(-2)
+      if (lastTwo[0] === 'choice' && /^\d+$/.test(lastTwo[1]!)) {
+        const index = parseInt(lastTwo[1]!, 10)
+        const target = parts.slice(1, -2).join(':')
+        // Navigate: send Down × index, then Enter to select
+        for (let i = 0; i < index; i++) {
+          await adapter.sendKey(target, 'Down')
+          await new Promise(r => setTimeout(r, 50))
+        }
+        await adapter.sendKey(target, 'Enter')
+        const btnText = (action as { text?: { text?: string } }).text?.text ?? `Option ${index + 1}`
+        label = `Selected: ${btnText}`
       } else {
-        // Key-based approval: send keystroke to the pane
-        await adapter.sendKey(target, actionValue)
-        label = actionValue === 'Enter' ? 'Accepted' : 'Rejected'
+        const actionValue = parts.pop()!
+        const target = parts.slice(1).join(':')
+
+        if (target.startsWith('hook:')) {
+          // Hook-based approval: write response file to unblock the waiting hook
+          const sessionId = target.slice(5)
+          const waitingDir = join(homedir(), '.config', 'perch', 'waiting')
+          await writeFile(join(waitingDir, `${sessionId}.response`), actionValue)
+          label = actionValue === 'allow' ? 'Approved' : 'Rejected'
+        } else {
+          // Key-based approval: send keystroke to the pane
+          await adapter.sendKey(target, actionValue)
+          label = actionValue === 'Enter' ? 'Accepted' : 'Rejected'
+        }
       }
 
       const msg = body as { message?: { ts?: string }; channel?: { id?: string } }
