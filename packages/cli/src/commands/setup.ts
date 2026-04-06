@@ -386,48 +386,50 @@ export async function runSetup(): Promise<void> {
     }
   }
 
-  // Step 2: Slack app creation
-  ui.step(2, 'Slack app creation')
-  ui.info('Open this URL to import the Slack app manifest:')
-  ui.info('  https://api.slack.com/apps?new_app=1')
-  ui.info('\nPaste this manifest:\n')
-  console.log(SLACK_MANIFEST)
-  await input({ message: 'Press Enter once your app is created...' })
-
-  // Step 3: Token collection
-  ui.step(3, 'Token collection')
+  // Step 2: Slack app setup
+  ui.step(2, 'Slack app setup')
 
   let botToken = await getSecret('botToken') ?? ''
-  if (botToken) {
-    ui.success('Bot token found in Keychain')
-  } else {
-    ui.info('Find your Bot Token in your Slack app settings:')
-    ui.info('  App page → OAuth & Permissions → Bot User OAuth Token')
-    while (true) {
-      botToken = await input({ message: 'Paste your Bot Token (xoxb-...):' })
-      const spinner = ui.spinner('Validating bot token...').start()
-      const result = await validateBotToken(botToken)
-      if (result.ok) { spinner.succeed('Bot token valid'); break }
-      spinner.fail(`Invalid: ${result.error}`)
-    }
-    await setSecret('botToken', botToken)
-  }
-
   let appToken = await getSecret('appToken') ?? ''
-  if (appToken) {
-    ui.success('App token found in Keychain')
+
+  if (botToken && appToken) {
+    ui.success('Slack tokens found in Keychain')
   } else {
-    ui.info('Generate an App-Level Token in your Slack app settings:')
-    ui.info('  App page → Basic Information → App-Level Tokens → Generate Token')
-    ui.info('  Add scope: connections:write')
-    while (true) {
-      appToken = await input({ message: 'Paste your App Token (xapp-...):' })
-      const spinner = ui.spinner('Validating app token...').start()
-      const result = await validateAppToken(appToken)
-      if (result.ok) { spinner.succeed('App token valid'); break }
-      spinner.fail(`Invalid: ${result.error}`)
+    ui.info('Create a Slack app for Perch:\n')
+    ui.info('  1. Open: https://api.slack.com/apps?new_app=1')
+    ui.info('  2. Choose "From a manifest" → select your workspace')
+    ui.info('  3. Switch to JSON tab and paste this manifest:\n')
+    console.log(SLACK_MANIFEST)
+    ui.info('\n  4. Click "Create" to create the app')
+    ui.info('  5. Click "Install to Workspace" and authorize')
+    await input({ message: 'Press Enter once the app is installed to your workspace...' })
+
+    if (!botToken) {
+      ui.info('\nCopy the Bot Token:')
+      ui.info('  App page → OAuth & Permissions → Bot User OAuth Token (starts with xoxb-)')
+      while (true) {
+        botToken = await input({ message: 'Paste your Bot Token (xoxb-...):' })
+        const spinner = ui.spinner('Validating bot token...').start()
+        const result = await validateBotToken(botToken)
+        if (result.ok) { spinner.succeed('Bot token valid'); break }
+        spinner.fail(`Invalid: ${result.error}`)
+      }
+      await setSecret('botToken', botToken)
     }
-    await setSecret('appToken', appToken)
+
+    if (!appToken) {
+      ui.info('\nGenerate an App-Level Token:')
+      ui.info('  App page → Basic Information → scroll to "App-Level Tokens" → Generate Token')
+      ui.info('  Name it anything (e.g. "perch"), add scope: connections:write, then Generate')
+      while (true) {
+        appToken = await input({ message: 'Paste your App Token (xapp-...):' })
+        const spinner = ui.spinner('Validating app token...').start()
+        const result = await validateAppToken(appToken)
+        if (result.ok) { spinner.succeed('App token valid'); break }
+        spinner.fail(`Invalid: ${result.error}`)
+      }
+      await setSecret('appToken', appToken)
+    }
   }
 
   // Step 4: Channel setup
