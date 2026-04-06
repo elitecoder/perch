@@ -5,7 +5,7 @@ import { homedir } from 'os'
 import { join, dirname } from 'path'
 import { fileURLToPath } from 'url'
 import { ui } from '../ui.js'
-import { detectMultiplexers, installInstructions } from '../detector.js'
+import { detectMultiplexers, installInstructions, detectClaudeCode } from '../detector.js'
 import { validateBotToken, validateAppToken, validateChannel } from '../validator.js'
 import { getSecret, setSecret } from '../keychain.js'
 import { install, resolveNodePath } from '../launchagent.js'
@@ -29,6 +29,30 @@ async function validateCmuxConnection(): Promise<boolean> {
       env: { ...process.env, CMUX_SOCKET_PATH: CMUX_SOCKET },
     })
     return true
+  } catch {
+    return false
+  }
+}
+
+const CMUX_BUNDLE_ID = 'com.cmuxterm.app'
+
+async function getCmuxSocketControlMode(): Promise<string | null> {
+  try {
+    const { stdout } = await execa('defaults', ['read', CMUX_BUNDLE_ID, 'socketControlMode'])
+    return stdout.trim()
+  } catch {
+    return null
+  }
+}
+
+async function enableCmuxAutomationMode(): Promise<void> {
+  await execa('defaults', ['write', CMUX_BUNDLE_ID, 'socketControlMode', '-string', 'automation'])
+}
+
+async function isCmuxRunning(): Promise<boolean> {
+  try {
+    const { stdout } = await execa('pgrep', ['-x', 'cmux'])
+    return stdout.trim().length > 0
   } catch {
     return false
   }
@@ -189,14 +213,42 @@ export function removeClaudeHooks(): void {
 export async function runSetup(): Promise<void> {
   ui.header('Welcome to Perch Setup')
 
+  // Step 0: Check Claude Code is installed
+  ui.step(0, 'Checking Claude Code')
+  const claudeSpinner = ui.spinner('Detecting Claude Code...').start()
+  const claude = await detectClaudeCode()
+  if (!claude.installed) {
+    claudeSpinner.fail('Claude Code not found')
+    ui.info('\nPerch requires Claude Code to be installed.')
+    ui.info('  npm install -g @anthropic-ai/claude-code')
+    ui.info('\nRun `perch setup` again after installing.')
+    process.exit(1)
+  }
+  claudeSpinner.succeed(`Claude Code ${claude.version ?? ''} installed`)
+
   // Step 1: Detect multiplexer
   ui.step(1, 'Detecting terminal multiplexer')
-  const found = await detectMultiplexers()
+  let found = await detectMultiplexers()
 
   if (found.length === 0) {
-    ui.error('No supported terminal multiplexer found.')
-    ui.info(`Install tmux: ${installInstructions('tmux')}`)
-    process.exit(1)
+    // Offer to install cmux via Homebrew
+    const installCmux = await confirm({ message: 'No terminal multiplexer found. Install cmux via Homebrew?' })
+    if (installCmux) {
+      const installSpinner = ui.spinner('Installing cmux (brew install --cask cmux)...').start()
+      try {
+        await execa('brew', ['install', '--cask', 'cmux'], { timeout: 120_000 })
+        installSpinner.succeed('cmux installed')
+        found = await detectMultiplexers()
+      } catch (err) {
+        installSpinner.fail(`Installation failed: ${err instanceof Error ? err.message : err}`)
+      }
+    }
+    if (found.length === 0) {
+      ui.error('No supported terminal multiplexer found.')
+      ui.info(`Install cmux:  brew install --cask cmux`)
+      ui.info(`Install tmux:  ${installInstructions('tmux')}`)
+      process.exit(1)
+    }
   }
 
   let multiplexerId: string
@@ -212,17 +264,41 @@ export async function runSetup(): Promise<void> {
 
   // Validate cmux Automation Mode (required for CLI to work from background processes)
   if (multiplexerId === 'cmux') {
-    while (true) {
-      const spinner = ui.spinner('Testing cmux socket connection...').start()
-      const ok = await validateCmuxConnection()
-      if (ok) {
-        spinner.succeed('cmux connected')
-        break
+    // Check if Automation Mode is already enabled
+    const currentMode = await getCmuxSocketControlMode()
+    if (currentMode !== 'automation') {
+      const enableAuto = await confirm({ message: 'Perch requires cmux Automation Mode. Enable it now?' })
+      if (enableAuto) {
+        const autoSpinner = ui.spinner('Enabling Automation Mode...').start()
+        try {
+          await enableCmuxAutomationMode()
+          autoSpinner.succeed('Automation Mode enabled')
+          // cmux needs a restart to pick up the defaults change
+          if (await isCmuxRunning()) {
+            ui.info('  Restart cmux for the setting to take effect.')
+            await input({ message: 'Press Enter after restarting cmux...' })
+          }
+        } catch (err) {
+          autoSpinner.fail(`Could not enable Automation Mode: ${err instanceof Error ? err.message : err}`)
+          ui.info('  Enable manually: cmux → Settings → Automation → Socket Control Mode: Automation')
+          await input({ message: 'Press Enter once you have enabled Automation Mode...' })
+        }
+      } else {
+        ui.info('  Enable manually: cmux → Settings → Automation → Socket Control Mode: Automation')
+        await input({ message: 'Press Enter once you have enabled Automation Mode...' })
       }
-      spinner.fail('cmux CLI cannot reach the socket')
-      ui.info('\nPerch requires cmux Automation Mode to be enabled:')
+    }
+
+    // Verify socket connection works
+    const connSpinner = ui.spinner('Testing cmux socket connection...').start()
+    const ok = await validateCmuxConnection()
+    if (ok) {
+      connSpinner.succeed('cmux connected')
+    } else {
+      connSpinner.fail('cmux CLI cannot reach the socket')
+      ui.info('\nMake sure cmux is running with Automation Mode enabled, then try again.')
       ui.info('  cmux → Settings → Automation → Socket Control Mode: Automation')
-      await input({ message: 'Press Enter once you have enabled Automation Mode...' })
+      process.exit(1)
     }
   }
 

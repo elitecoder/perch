@@ -41,6 +41,7 @@ export async function detectMultiplexers(): Promise<MultiplexerInfo[]> {
 export function installInstructions(id: string): string {
   const instructions: Record<string, string> = {
     tmux: 'brew install tmux',
+    cmux: 'brew install --cask cmux',
   }
   return instructions[id] ?? `Install ${id} via your package manager`
 }
