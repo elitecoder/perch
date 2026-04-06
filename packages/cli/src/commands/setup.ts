@@ -58,6 +58,20 @@ async function isCmuxRunning(): Promise<boolean> {
   }
 }
 
+async function launchCmux(): Promise<void> {
+  await execa('open', ['-a', 'cmux'])
+}
+
+/** Wait for cmux socket to become reachable, up to maxWaitMs. */
+async function waitForCmuxSocket(maxWaitMs = 10_000): Promise<boolean> {
+  const start = Date.now()
+  while (Date.now() - start < maxWaitMs) {
+    if (await validateCmuxConnection()) return true
+    await new Promise(r => setTimeout(r, 500))
+  }
+  return false
+}
+
 const CLAUDE_SETTINGS_PATH = join(homedir(), '.claude', 'settings.json')
 const CLAUDE_SKILLS_DIR = join(homedir(), '.claude', 'skills')
 const HOOKS_DIR = join(CONFIG_DIR, 'hooks')
@@ -276,6 +290,18 @@ export async function runSetup(): Promise<void> {
       try {
         await execa('brew', ['install', '--cask', 'cmux'], { timeout: 120_000 })
         installSpinner.succeed('cmux installed')
+        // Enable Automation Mode before first launch so the socket is available immediately
+        await enableCmuxAutomationMode()
+        ui.success('Automation Mode enabled')
+        // Launch the app
+        const launchSpinner = ui.spinner('Launching cmux...').start()
+        await launchCmux()
+        const socketReady = await waitForCmuxSocket()
+        if (socketReady) {
+          launchSpinner.succeed('cmux launched and socket ready')
+        } else {
+          launchSpinner.warn('cmux launched but socket not yet ready — will retry later')
+        }
         found = await detectMultiplexers()
       } catch (err) {
         installSpinner.fail(`Installation failed: ${err instanceof Error ? err.message : err}`)
@@ -311,8 +337,8 @@ export async function runSetup(): Promise<void> {
         try {
           await enableCmuxAutomationMode()
           autoSpinner.succeed('Automation Mode enabled')
-          // cmux needs a restart to pick up the defaults change
           if (await isCmuxRunning()) {
+            // cmux needs a restart to pick up the defaults change
             ui.info('  Restart cmux for the setting to take effect.')
             await input({ message: 'Press Enter after restarting cmux...' })
           }
@@ -324,6 +350,18 @@ export async function runSetup(): Promise<void> {
       } else {
         ui.info('  Enable manually: cmux → Settings → Automation → Socket Control Mode: Automation')
         await input({ message: 'Press Enter once you have enabled Automation Mode...' })
+      }
+    }
+
+    // Ensure cmux is running
+    if (!(await isCmuxRunning())) {
+      const launchSpinner = ui.spinner('Launching cmux...').start()
+      await launchCmux()
+      const socketReady = await waitForCmuxSocket()
+      if (socketReady) {
+        launchSpinner.succeed('cmux launched')
+      } else {
+        launchSpinner.fail('cmux launched but socket not ready')
       }
     }
 
