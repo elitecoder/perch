@@ -60,6 +60,8 @@ perch setup
 #    list
 ```
 
+Setup walks you through everything: it checks for Claude Code, offers to install cmux via Homebrew if no multiplexer is found, auto-enables cmux Automation Mode, creates the Slack app, and installs the daemon. For cmux users, it also installs a Claude Code skill so your agents know how to use cmux commands natively.
+
 ## Slack Commands
 
 ### Sessions
@@ -157,6 +159,7 @@ packages/
                 plugins/     Claude Code state detection
                 commands/    Slack command handlers
 scripts/      curl installer
+skills/       Claude Code skills (installed to ~/.claude/skills/)
 slack/        Slack app manifest
 launchd/      LaunchAgent plist template
 ```

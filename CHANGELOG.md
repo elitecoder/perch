@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.1.4 (2026-04-06)
+
+### Features
+
+- **Claude Code prerequisite check** — setup now verifies Claude Code is installed before proceeding, with install instructions if missing
+- **cmux install offer** — when no multiplexer is detected, setup offers to install cmux via `brew install --cask cmux`
+- **Auto-enable Automation Mode** — setup reads cmux's `socketControlMode` preference and offers to enable it via `defaults write` instead of requiring manual UI navigation
+- **cmux skill for Claude Code** — when cmux is selected, setup installs a comprehensive cmux CLI skill to `~/.claude/skills/cmux/` so Claude Code sessions have native awareness of all cmux commands (terminal I/O, workspaces, splits, browser automation, sidebar metadata, notifications)
+- **Skill cleanup on uninstall** — `perch uninstall` removes installed Claude Code skills
+
+### Fixes
+
+- **Setup manifest path** — read canonical `slack/manifest.json` instead of hardcoded copy
+
 ## 0.1.3 (2026-04-06)
 
 ### Features
