@@ -2,7 +2,7 @@ import { confirm } from '@inquirer/prompts'
 import { execa } from 'execa'
 import { uninstall } from '../launchagent.js'
 import { clearAllSecrets } from '../keychain.js'
-import { removeClaudeHooks } from './setup.js'
+import { removeClaudeHooks, removeClaudeSkills } from './setup.js'
 import { ui } from '../ui.js'
 import { rmSync, existsSync, unlinkSync } from 'fs'
 import { homedir } from 'os'
@@ -27,6 +27,9 @@ export async function runUninstall(): Promise<void> {
 
   removeClaudeHooks()
   ui.success('Claude Code hooks removed')
+
+  removeClaudeSkills()
+  ui.success('Claude Code skills removed')
 
   if (existsSync(CONFIG_DIR)) {
     rmSync(CONFIG_DIR, { recursive: true, force: true })

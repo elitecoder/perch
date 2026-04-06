@@ -1,6 +1,6 @@
 import { input, select, confirm } from '@inquirer/prompts'
 import { execa } from 'execa'
-import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs'
+import { existsSync, readFileSync, writeFileSync, mkdirSync, cpSync, rmSync } from 'fs'
 import { homedir } from 'os'
 import { join, dirname } from 'path'
 import { fileURLToPath } from 'url'
@@ -35,9 +35,13 @@ async function validateCmuxConnection(): Promise<boolean> {
 }
 
 const CLAUDE_SETTINGS_PATH = join(homedir(), '.claude', 'settings.json')
+const CLAUDE_SKILLS_DIR = join(homedir(), '.claude', 'skills')
 const HOOKS_DIR = join(CONFIG_DIR, 'hooks')
 const WAITING_DIR = join(CONFIG_DIR, 'waiting')
 const PERCH_HOOK_MARKER = 'perch-managed'
+
+/** Bundled skill sources (relative to CLI package). */
+const SKILL_SOURCES = join(__dirname, '../../../skills')
 
 /** Source hook scripts (relative to CLI package). */
 const HOOK_SOURCES = join(__dirname, '../../../hooks')
@@ -139,6 +143,24 @@ async function installClaudeHooks(): Promise<void> {
 
   settings.hooks = hooks
   writeFileSync(CLAUDE_SETTINGS_PATH, JSON.stringify(settings, null, 2), 'utf-8')
+}
+
+function installClaudeSkill(skillName: string): void {
+  const src = join(SKILL_SOURCES, skillName)
+  const dst = join(CLAUDE_SKILLS_DIR, skillName)
+  mkdirSync(dst, { recursive: true })
+  cpSync(src, dst, { recursive: true })
+}
+
+const PERCH_SKILLS = ['cmux'] as const
+
+export function removeClaudeSkills(): void {
+  for (const skillName of PERCH_SKILLS) {
+    const dst = join(CLAUDE_SKILLS_DIR, skillName)
+    if (existsSync(dst)) {
+      rmSync(dst, { recursive: true })
+    }
+  }
 }
 
 export function removeClaudeHooks(): void {
@@ -274,8 +296,20 @@ export async function runSetup(): Promise<void> {
     ui.info('  Perch will still work, but won\'t detect permission prompts.')
   }
 
-  // Step 6: LaunchAgent install
-  ui.step(6, 'Installing LaunchAgent')
+  // Step 6: Claude Code skills (adapter-specific)
+  if (multiplexerId === 'cmux') {
+    ui.step(6, 'Installing cmux skill for Claude Code')
+    const skillSpinner = ui.spinner('Installing cmux skill...').start()
+    try {
+      installClaudeSkill('cmux')
+      skillSpinner.succeed('cmux skill installed → ~/.claude/skills/cmux/')
+    } catch (err) {
+      skillSpinner.fail(`Could not install cmux skill: ${err instanceof Error ? err.message : err}`)
+    }
+  }
+
+  // Step 7: LaunchAgent install
+  ui.step(7, 'Installing LaunchAgent')
   const nodePath = await resolveNodePath()
   const daemonPath = join(__dirname, '../../daemon/dist/index.js')
 
@@ -283,7 +317,7 @@ export async function runSetup(): Promise<void> {
   await install({ nodePath, daemonPath })
   spinner.succeed('LaunchAgent installed and started')
 
-  // Step 7: Summary
+  // Step 8: Summary
   ui.header('Setup Complete!')
   ui.success(`Multiplexer: ${multiplexerId}`)
   ui.success(`Channel: ${channelId}`)
