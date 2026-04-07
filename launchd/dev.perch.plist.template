@@ -24,8 +24,6 @@
     <string>{{HOME}}</string>
     <key>PATH</key>
     <string>/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin</string>
-    <key>CMUX_SOCKET_PATH</key>
-    <string>{{HOME}}/Library/Application Support/cmux/cmux.sock</string>
   </dict>
   <key>ThrottleInterval</key>
   <integer>5</integer>

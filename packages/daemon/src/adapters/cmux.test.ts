@@ -31,7 +31,6 @@ describe('CmuxAdapter', () => {
       expect(mockExeca).toHaveBeenCalledWith(
         expect.stringContaining('cmux'),
         ['ping'],
-        expect.objectContaining({ env: expect.any(Object) }),
       )
     })
 
@@ -124,7 +123,6 @@ describe('CmuxAdapter', () => {
       expect(mockExeca).toHaveBeenCalledWith(
         expect.stringContaining('cmux'),
         ['capture-pane', '--surface', 'surface:5', '--lines', '30'],
-        expect.any(Object),
       )
     })
 
@@ -134,7 +132,6 @@ describe('CmuxAdapter', () => {
       expect(mockExeca).toHaveBeenCalledWith(
         expect.stringContaining('cmux'),
         ['capture-pane', '--surface', 'surface:5', '--lines', '50'],
-        expect.any(Object),
       )
     })
 
@@ -144,7 +141,6 @@ describe('CmuxAdapter', () => {
       expect(mockExeca).toHaveBeenCalledWith(
         expect.stringContaining('cmux'),
         ['capture-pane', '--surface', 'surface:3', '--lines', '50'],
-        expect.any(Object),
       )
     })
 
@@ -154,7 +150,6 @@ describe('CmuxAdapter', () => {
       expect(mockExeca).toHaveBeenCalledWith(
         expect.stringContaining('cmux'),
         ['capture-pane', '--surface', 'surface:7', '--lines', '50'],
-        expect.any(Object),
       )
     })
   })
@@ -171,12 +166,10 @@ describe('CmuxAdapter', () => {
       expect(mockExeca).toHaveBeenCalledWith(
         expect.stringContaining('cmux'),
         ['send', '--surface', 'surface:5', 'echo hello'],
-        expect.any(Object),
       )
       expect(mockExeca).toHaveBeenCalledWith(
         expect.stringContaining('cmux'),
         ['send-key', '--surface', 'surface:5', 'enter'],
-        expect.any(Object),
       )
     })
   })
@@ -204,7 +197,6 @@ describe('CmuxAdapter', () => {
         expect(mockExeca).toHaveBeenCalledWith(
           expect.stringContaining('cmux'),
           ['send-key', '--surface', 'surface:5', expected],
-          expect.any(Object),
         )
       }
     })
@@ -215,7 +207,6 @@ describe('CmuxAdapter', () => {
       expect(mockExeca).toHaveBeenCalledWith(
         expect.stringContaining('cmux'),
         ['send-key', '--surface', 'surface:5', 'f5'],
-        expect.any(Object),
       )
     })
   })
@@ -231,7 +222,6 @@ describe('CmuxAdapter', () => {
       expect(mockExeca).toHaveBeenCalledWith(
         expect.stringContaining('cmux'),
         ['new-workspace', '--name', 'my-new'],
-        expect.any(Object),
       )
       expect(session.name).toBe('my-new')
     })
@@ -245,7 +235,6 @@ describe('CmuxAdapter', () => {
       expect(mockExeca).toHaveBeenCalledWith(
         expect.stringContaining('cmux'),
         ['new-workspace', '--name', 'dev', '--cwd', '/home/user', '--command', 'vim'],
-        expect.any(Object),
       )
     })
 
@@ -265,7 +254,6 @@ describe('CmuxAdapter', () => {
       expect(mockExeca).toHaveBeenCalledWith(
         expect.stringContaining('cmux'),
         ['workspace-action', '--action', 'rename', '--workspace', 'workspace:1', '--title', 'new-name'],
-        expect.any(Object),
       )
     })
   })
@@ -277,7 +265,6 @@ describe('CmuxAdapter', () => {
       expect(mockExeca).toHaveBeenCalledWith(
         expect.stringContaining('cmux'),
         ['close-workspace', '--workspace', 'workspace:1'],
-        expect.any(Object),
       )
     })
   })
@@ -289,7 +276,6 @@ describe('CmuxAdapter', () => {
       expect(mockExeca).toHaveBeenCalledWith(
         expect.stringContaining('cmux'),
         ['new-split', 'right', '--workspace', 'workspace:1', '--surface', 'surface:5'],
-        expect.any(Object),
       )
       expect(pane.id).toBe('cmux:workspace:1:surface:20')
       expect(pane.active).toBe(true)
@@ -309,7 +295,6 @@ describe('CmuxAdapter', () => {
       expect(mockExeca).toHaveBeenCalledWith(
         expect.stringContaining('cmux'),
         ['focus-surface', '--surface', 'surface:5'],
-        expect.any(Object),
       )
     })
 
