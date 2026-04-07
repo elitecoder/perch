@@ -11,7 +11,7 @@ Perch is a macOS daemon that connects Slack to your terminal multiplexer (tmux o
 
 *No SSH. No port forwarding. No VPN. Just Slack.*
 
-https://github.com/user-attachments/assets/8e5a6832-14d8-4241-b704-97a5cba146e4
+https://github.com/user-attachments/assets/e2c3bc02-e087-4f16-8077-e2ade7527e32
 
 ---
 
