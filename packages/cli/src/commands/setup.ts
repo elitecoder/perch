@@ -27,15 +27,9 @@ const CMUX_BIN =
   process.env.CMUX_BIN ??
   '/Applications/cmux.app/Contents/Resources/bin/cmux'
 
-const CMUX_SOCKET =
-  process.env.CMUX_SOCKET_PATH ??
-  join(homedir(), 'Library', 'Application Support', 'cmux', 'cmux.sock')
-
 async function validateCmuxConnection(): Promise<boolean> {
   try {
-    await execa(CMUX_BIN, ['ping'], {
-      env: { ...process.env, CMUX_SOCKET_PATH: CMUX_SOCKET },
-    })
+    await execa(CMUX_BIN, ['ping'])
     return true
   } catch {
     return false
