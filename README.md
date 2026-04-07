@@ -15,12 +15,6 @@ https://github.com/user-attachments/assets/8e5a6832-14d8-4241-b704-97a5cba146e4
 
 ---
 
-**Install:**
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/elitecoder/perch/main/scripts/install.sh | bash
-```
-
 ## Why Perch
 
 You're running Claude Code on your workstation. You step away. Now what?
