@@ -123,7 +123,6 @@ describe('CmuxAdapter', () => {
       expect(mockExeca).toHaveBeenCalledWith(
         expect.stringContaining('cmux'),
         ['capture-pane', '--surface', 'surface:5', '--lines', '30'],
-
       )
     })
 
@@ -133,7 +132,6 @@ describe('CmuxAdapter', () => {
       expect(mockExeca).toHaveBeenCalledWith(
         expect.stringContaining('cmux'),
         ['capture-pane', '--surface', 'surface:5', '--lines', '50'],
-
       )
     })
 
@@ -143,7 +141,6 @@ describe('CmuxAdapter', () => {
       expect(mockExeca).toHaveBeenCalledWith(
         expect.stringContaining('cmux'),
         ['capture-pane', '--surface', 'surface:3', '--lines', '50'],
-
       )
     })
 
@@ -153,7 +150,6 @@ describe('CmuxAdapter', () => {
       expect(mockExeca).toHaveBeenCalledWith(
         expect.stringContaining('cmux'),
         ['capture-pane', '--surface', 'surface:7', '--lines', '50'],
-
       )
     })
   })
@@ -170,12 +166,10 @@ describe('CmuxAdapter', () => {
       expect(mockExeca).toHaveBeenCalledWith(
         expect.stringContaining('cmux'),
         ['send', '--surface', 'surface:5', 'echo hello'],
-
       )
       expect(mockExeca).toHaveBeenCalledWith(
         expect.stringContaining('cmux'),
         ['send-key', '--surface', 'surface:5', 'enter'],
-
       )
     })
   })
@@ -203,7 +197,6 @@ describe('CmuxAdapter', () => {
         expect(mockExeca).toHaveBeenCalledWith(
           expect.stringContaining('cmux'),
           ['send-key', '--surface', 'surface:5', expected],
-  
         )
       }
     })
@@ -214,7 +207,6 @@ describe('CmuxAdapter', () => {
       expect(mockExeca).toHaveBeenCalledWith(
         expect.stringContaining('cmux'),
         ['send-key', '--surface', 'surface:5', 'f5'],
-
       )
     })
   })
@@ -230,7 +222,6 @@ describe('CmuxAdapter', () => {
       expect(mockExeca).toHaveBeenCalledWith(
         expect.stringContaining('cmux'),
         ['new-workspace', '--name', 'my-new'],
-
       )
       expect(session.name).toBe('my-new')
     })
@@ -244,7 +235,6 @@ describe('CmuxAdapter', () => {
       expect(mockExeca).toHaveBeenCalledWith(
         expect.stringContaining('cmux'),
         ['new-workspace', '--name', 'dev', '--cwd', '/home/user', '--command', 'vim'],
-
       )
     })
 
@@ -264,7 +254,6 @@ describe('CmuxAdapter', () => {
       expect(mockExeca).toHaveBeenCalledWith(
         expect.stringContaining('cmux'),
         ['workspace-action', '--action', 'rename', '--workspace', 'workspace:1', '--title', 'new-name'],
-
       )
     })
   })
@@ -276,7 +265,6 @@ describe('CmuxAdapter', () => {
       expect(mockExeca).toHaveBeenCalledWith(
         expect.stringContaining('cmux'),
         ['close-workspace', '--workspace', 'workspace:1'],
-
       )
     })
   })
@@ -288,7 +276,6 @@ describe('CmuxAdapter', () => {
       expect(mockExeca).toHaveBeenCalledWith(
         expect.stringContaining('cmux'),
         ['new-split', 'right', '--workspace', 'workspace:1', '--surface', 'surface:5'],
-
       )
       expect(pane.id).toBe('cmux:workspace:1:surface:20')
       expect(pane.active).toBe(true)
@@ -308,7 +295,6 @@ describe('CmuxAdapter', () => {
       expect(mockExeca).toHaveBeenCalledWith(
         expect.stringContaining('cmux'),
         ['focus-surface', '--surface', 'surface:5'],
-
       )
     })
 
