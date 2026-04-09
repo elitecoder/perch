@@ -5,13 +5,14 @@ const mockMessageHandler = vi.fn()
 const mockEventHandler = vi.fn()
 const mockActionHandler = vi.fn()
 
-vi.mock('@slack/bolt', () => ({
-  App: vi.fn().mockImplementation(() => ({
+vi.mock('@slack/bolt', () => {
+  const App = vi.fn().mockImplementation(() => ({
     message: mockMessageHandler,
     event: mockEventHandler,
     action: mockActionHandler,
-  })),
-}))
+  }))
+  return { default: { App }, App }
+})
 
 vi.mock('@slack/web-api', () => ({
   WebClient: vi.fn().mockImplementation(() => ({

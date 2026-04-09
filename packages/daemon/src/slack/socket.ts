@@ -1,4 +1,6 @@
-import { App } from '@slack/bolt'
+import bolt from '@slack/bolt'
+import type { App as AppType } from '@slack/bolt'
+const { App } = bolt
 import { WebClient } from '@slack/web-api'
 import { writeFile, mkdir } from 'fs/promises'
 import { tmpdir, homedir } from 'os'
@@ -22,7 +24,7 @@ export interface SocketAppOptions {
   watcher: WatcherManager
 }
 
-export function createSocketApp(opts: SocketAppOptions): { app: App; poster: Poster } {
+export function createSocketApp(opts: SocketAppOptions): { app: AppType; poster: Poster } {
   const { botToken, appToken, channelId, adapter, plugins, watcher } = opts
 
   const app = new App({

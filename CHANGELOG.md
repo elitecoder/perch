@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.6 (2026-04-09)
+
+### Fixes
+
+- **Node 25.5.0 startup crash** — `import { App } from '@slack/bolt'` failed on Node 25.5.0 with `SyntaxError: Named export 'App' not found` because that release's bundled `cjs-module-lexer` didn't detect bolt's CJS named exports. Switched to default-import + destructure, which is version-agnostic.
+
 ## 0.1.5 (2026-04-06)
 
 ### Features
