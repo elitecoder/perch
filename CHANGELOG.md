@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.7 (2026-04-15)
+
+### Fixes
+
+- **cmux 0.63 API compatibility** — the daemon crashed with `not_found: Workspace not found` whenever a watched pane lived outside the user's currently focused cmux workspace. cmux 0.63 stopped resolving bare surface refs against any workspace; `capture-pane`, `send`, and `send-key` now pass `--workspace` alongside `--surface` so cross-workspace operations work again.
+- **cmux `new-split` output parsing** — cmux 0.63 wraps the new ref as `OK surface:N workspace:M` instead of emitting a bare `surface:N`; `splitPane` now extracts the surface ref from either form.
+- **cmux `selectPane`** — cmux 0.63 removed the `focus-surface` subcommand; switched to the `surface.focus` RPC method (which is still supported).
+
 ## 0.1.6 (2026-04-09)
 
 ### Fixes
