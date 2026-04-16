@@ -116,13 +116,13 @@ describe('CmuxAdapter', () => {
       await expect(adapter.readPane('cmux:workspace:1:surface:999')).rejects.toThrow('surface not found')
     })
 
-    it('calls capture-pane with surface ref and line count', async () => {
+    it('calls capture-pane with workspace, surface ref, and line count', async () => {
       mockOutput('some output')
       const result = await adapter.readPane('cmux:workspace:1:surface:5', 30)
       expect(result).toBe('some output')
       expect(mockExeca).toHaveBeenCalledWith(
         expect.stringContaining('cmux'),
-        ['capture-pane', '--surface', 'surface:5', '--lines', '30'],
+        ['capture-pane', '--workspace', 'workspace:1', '--surface', 'surface:5', '--lines', '30'],
       )
     })
 
@@ -131,11 +131,11 @@ describe('CmuxAdapter', () => {
       await adapter.readPane('cmux:workspace:1:surface:5')
       expect(mockExeca).toHaveBeenCalledWith(
         expect.stringContaining('cmux'),
-        ['capture-pane', '--surface', 'surface:5', '--lines', '50'],
+        ['capture-pane', '--workspace', 'workspace:1', '--surface', 'surface:5', '--lines', '50'],
       )
     })
 
-    it('handles bare numeric pane ID', async () => {
+    it('handles bare numeric pane ID (omits --workspace)', async () => {
       mockOutput('output')
       await adapter.readPane('3')
       expect(mockExeca).toHaveBeenCalledWith(
@@ -144,7 +144,7 @@ describe('CmuxAdapter', () => {
       )
     })
 
-    it('handles surface:N format directly', async () => {
+    it('handles surface:N format directly (omits --workspace)', async () => {
       mockOutput('output')
       await adapter.readPane('surface:7')
       expect(mockExeca).toHaveBeenCalledWith(
@@ -160,16 +160,16 @@ describe('CmuxAdapter', () => {
       await expect(adapter.sendText('cmux:workspace:1:surface:5', 'echo hi')).rejects.toThrow('connection lost')
     })
 
-    it('sends text then enter separately', async () => {
+    it('sends text then enter separately with workspace', async () => {
       mockOutput('')
       await adapter.sendText('cmux:workspace:1:surface:5', 'echo hello')
       expect(mockExeca).toHaveBeenCalledWith(
         expect.stringContaining('cmux'),
-        ['send', '--surface', 'surface:5', 'echo hello'],
+        ['send', '--workspace', 'workspace:1', '--surface', 'surface:5', 'echo hello'],
       )
       expect(mockExeca).toHaveBeenCalledWith(
         expect.stringContaining('cmux'),
-        ['send-key', '--surface', 'surface:5', 'enter'],
+        ['send-key', '--workspace', 'workspace:1', '--surface', 'surface:5', 'enter'],
       )
     })
   })
@@ -196,7 +196,7 @@ describe('CmuxAdapter', () => {
         await adapter.sendKey('cmux:workspace:1:surface:5', input)
         expect(mockExeca).toHaveBeenCalledWith(
           expect.stringContaining('cmux'),
-          ['send-key', '--surface', 'surface:5', expected],
+          ['send-key', '--workspace', 'workspace:1', '--surface', 'surface:5', expected],
         )
       }
     })
@@ -206,7 +206,7 @@ describe('CmuxAdapter', () => {
       await adapter.sendKey('cmux:workspace:1:surface:5', 'F5')
       expect(mockExeca).toHaveBeenCalledWith(
         expect.stringContaining('cmux'),
-        ['send-key', '--surface', 'surface:5', 'f5'],
+        ['send-key', '--workspace', 'workspace:1', '--surface', 'surface:5', 'f5'],
       )
     })
   })
@@ -270,8 +270,8 @@ describe('CmuxAdapter', () => {
   })
 
   describe('splitPane', () => {
-    it('calls new-split with direction and returns new pane', async () => {
-      mockOutput('surface:20')
+    it('calls new-split with direction and parses OK-prefixed output', async () => {
+      mockOutput('OK surface:20 workspace:1')
       const pane = await adapter.splitPane('cmux:workspace:1:surface:5', 'right')
       expect(mockExeca).toHaveBeenCalledWith(
         expect.stringContaining('cmux'),
@@ -279,6 +279,12 @@ describe('CmuxAdapter', () => {
       )
       expect(pane.id).toBe('cmux:workspace:1:surface:20')
       expect(pane.active).toBe(true)
+    })
+
+    it('handles legacy bare-ref stdout from new-split', async () => {
+      mockOutput('surface:20')
+      const pane = await adapter.splitPane('cmux:workspace:1:surface:5', 'right')
+      expect(pane.id).toBe('cmux:workspace:1:surface:20')
     })
 
     it('handles empty stdout from new-split gracefully', async () => {
@@ -289,16 +295,16 @@ describe('CmuxAdapter', () => {
   })
 
   describe('selectPane', () => {
-    it('calls focus-surface', async () => {
+    it('calls rpc surface.focus', async () => {
       mockOutput('')
       await adapter.selectPane('cmux:workspace:1:surface:5')
       expect(mockExeca).toHaveBeenCalledWith(
         expect.stringContaining('cmux'),
-        ['focus-surface', '--surface', 'surface:5'],
+        ['rpc', 'surface.focus', JSON.stringify({ surface_id: 'surface:5' })],
       )
     })
 
-    it('does not throw if focus-surface fails (best-effort)', async () => {
+    it('does not throw if rpc surface.focus fails (best-effort)', async () => {
       mockExeca.mockRejectedValueOnce(new Error('not supported') as never)
       await expect(adapter.selectPane('cmux:workspace:1:surface:5')).resolves.toBeUndefined()
     })

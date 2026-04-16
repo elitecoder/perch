@@ -87,9 +87,10 @@ export class CmuxAdapter implements ITerminalAdapter {
   }
 
   async readPane(paneId: string, lines = 50): Promise<string> {
-    const { surface } = this._parsePaneId(paneId)
+    const { workspace, surface } = this._parsePaneId(paneId)
     const { stdout } = await cmux([
       'capture-pane',
+      ...this._wsArgs(workspace),
       '--surface', surface,
       '--lines', String(lines),
     ])
@@ -97,16 +98,24 @@ export class CmuxAdapter implements ITerminalAdapter {
   }
 
   async sendText(paneId: string, text: string): Promise<void> {
-    const { surface } = this._parsePaneId(paneId)
+    const { workspace, surface } = this._parsePaneId(paneId)
     // Send text first, then Enter separately — some TUIs (Claude Code)
     // don't process Enter correctly when it's inlined via \n in a paste.
-    await cmux(['send', '--surface', surface, text])
-    await cmux(['send-key', '--surface', surface, 'enter'])
+    await cmux(['send', ...this._wsArgs(workspace), '--surface', surface, text])
+    await cmux(['send-key', ...this._wsArgs(workspace), '--surface', surface, 'enter'])
   }
 
   async sendKey(paneId: string, key: string): Promise<void> {
-    const { surface } = this._parsePaneId(paneId)
-    await cmux(['send-key', '--surface', surface, toSendKeyArg(key)])
+    const { workspace, surface } = this._parsePaneId(paneId)
+    await cmux(['send-key', ...this._wsArgs(workspace), '--surface', surface, toSendKeyArg(key)])
+  }
+
+  // cmux resolves bare surface refs against the currently-focused workspace.
+  // The daemon operates across many workspaces, so we must pin the workspace
+  // explicitly whenever we know it — otherwise commands fail with
+  // "Workspace not found" for any surface outside the user's current view.
+  private _wsArgs(workspace: string): string[] {
+    return workspace ? ['--workspace', workspace] : []
   }
 
   async createSession(name: string, cwd?: string, command?: string): Promise<Session> {
@@ -135,8 +144,9 @@ export class CmuxAdapter implements ITerminalAdapter {
       '--workspace', workspace,
       '--surface', surface,
     ])
-    // stdout contains the new surface ref
-    const newSurface = stdout.trim() || 'surface:new'
+    // cmux ≥0.63 emits "OK surface:17 workspace:16"; older builds emitted
+    // the bare surface ref. Pull out the surface ref either way.
+    const newSurface = stdout.match(/surface:\d+/)?.[0] ?? 'surface:new'
     return {
       id: `cmux:${workspace}:${newSurface}`,
       index: 0,
@@ -148,8 +158,9 @@ export class CmuxAdapter implements ITerminalAdapter {
 
   async selectPane(paneId: string): Promise<void> {
     const { surface } = this._parsePaneId(paneId)
-    await cmux(['focus-surface', '--surface', surface]).catch(() => {
-      // focus-surface may not exist in all versions; best-effort
+    // cmux ≥0.63 removed the `focus-surface` subcommand; the RPC method remains.
+    await cmux(['rpc', 'surface.focus', JSON.stringify({ surface_id: surface })]).catch(() => {
+      // Best-effort — never block a command if focus fails.
     })
   }
 
