@@ -80,6 +80,7 @@ export class CmuxAdapter implements ITerminalAdapter {
         index: index++,
         active,
         command: titleMatch?.[1] ?? '',
+        title: titleMatch?.[1],
         dimensions: { rows: 24, cols: 80 }, // cmux doesn't expose dims over CLI
       })
     }

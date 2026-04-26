@@ -72,11 +72,13 @@ describe('CmuxAdapter', () => {
       expect(pane0.id).toBe('cmux:workspace:1:surface:5')
       expect(pane0.active).toBe(true)
       expect(pane0.command).toBe('vim')
+      expect(pane0.title).toBe('vim')
 
       const pane1 = sessions[0].windows[0].panes[1]
       expect(pane1.id).toBe('cmux:workspace:1:surface:6')
       expect(pane1.active).toBe(false)
       expect(pane1.command).toBe('bash')
+      expect(pane1.title).toBe('bash')
     })
 
     it('skips non-terminal surfaces (e.g. browser)', async () => {

@@ -133,6 +133,35 @@ describe('findClaudePanes', () => {
     expect(result[0]!.jsonlPath).toBeNull()
   })
 
+  it('propagates pane title from adapter into ClaudePane.paneTitle', async () => {
+    const sessionWithTitle: Session = {
+      id: '$0',
+      name: 'Squirrel',
+      windows: [{
+        id: '@0',
+        name: 'main',
+        panes: [{
+          id: 'cmux:workspace:7:surface:12',
+          index: 0,
+          active: true,
+          command: '✳ Address PR comments',
+          title: '✳ Address PR comments',
+          dimensions: { rows: 40, cols: 120 },
+        }],
+      }],
+    }
+    const adapter = makeAdapter([sessionWithTitle], vi.fn().mockResolvedValue(100))
+    mockExeca.mockResolvedValueOnce({
+      stdout: '  100    1 /bin/zsh\n  200  100 node claude --session-id aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee',
+    } as never)
+    mockExeca.mockResolvedValueOnce({ stdout: 'p200\nn/home/user/project' } as never)
+
+    const result = await findClaudePanes(adapter)
+    expect(result).toHaveLength(1)
+    expect(result[0]!.sessionName).toBe('Squirrel')
+    expect(result[0]!.paneTitle).toBe('✳ Address PR comments')
+  })
+
   it('returns null when getPanePid is not available', async () => {
     const adapter = makeAdapter([mockSession]) // no getPanePid
     mockExeca.mockResolvedValueOnce({

@@ -88,6 +88,32 @@ describe('terminal command handlers', () => {
       expect(text).not.toContain('watching')
     })
 
+    it('appends pane title after workspace name when the two differ', async () => {
+      vi.mocked(findClaudePanes).mockResolvedValue([
+        { ...mockClaudePane, sessionName: 'Squirrel', paneTitle: '✳ Address PR comments' },
+      ])
+      await handlers.list([], respond)
+      const text = respond.mock.calls[0]![0] as string
+      expect(text).toContain('Squirrel — ✳ Address PR comments')
+    })
+
+    it('omits the em-dash suffix when pane title matches workspace name', async () => {
+      vi.mocked(findClaudePanes).mockResolvedValue([
+        { ...mockClaudePane, sessionName: 'dev', paneTitle: 'dev' },
+      ])
+      await handlers.list([], respond)
+      const text = respond.mock.calls[0]![0] as string
+      expect(text).not.toContain('—')
+    })
+
+    it('falls back to workspace name when pane title is missing', async () => {
+      vi.mocked(findClaudePanes).mockResolvedValue([mockClaudePane])
+      await handlers.list([], respond)
+      const text = respond.mock.calls[0]![0] as string
+      expect(text).toContain('*my-feature*')
+      expect(text).not.toContain('—')
+    })
+
     it('lists multiple sessions', async () => {
       vi.mocked(findClaudePanes).mockResolvedValue([
         mockClaudePane,

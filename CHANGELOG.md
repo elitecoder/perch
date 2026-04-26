@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Fixes
+
+- **`list` command shows workspace name only** — the Slack `list` response labeled every Claude session with its cmux workspace name, which made two panes in the same workspace indistinguishable and hid the current task. `list` now renders `*Workspace — Surface title*` when the two differ (falling back to workspace-only when they match or when the adapter doesn't expose a pane title). The cmux adapter already parses the surface title from `list-panels`; it's now propagated through `Pane.title` → `ClaudePane.paneTitle` → the list renderer.
+
 ## 0.1.7 (2026-04-15)
 
 ### Fixes

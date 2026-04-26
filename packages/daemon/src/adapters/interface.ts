@@ -15,6 +15,13 @@ export interface Pane {
   index: number
   active: boolean
   command: string // process running in this pane
+  /**
+   * Human-readable pane/surface title, distinct from `command`. cmux populates
+   * this from the surface title (which tracks the current Claude task), which
+   * is far more informative than the workspace name when disambiguating two
+   * panes inside the same workspace. tmux/zellij leave it undefined.
+   */
+  title?: string
   dimensions: { rows: number; cols: number }
 }
 

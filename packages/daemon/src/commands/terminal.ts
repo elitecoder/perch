@@ -50,7 +50,10 @@ export function makeTerminalHandlers(
     const lines = claudePanes.map(p => {
       const id = shortIdFromPaneId(p.paneId)
       const watchedMark = watching.includes(p.paneId) ? ' 👀 watching' : ''
-      return `  • *${p.sessionName}*    \`${id}\`${watchedMark}`
+      const label = p.paneTitle && p.paneTitle !== p.sessionName
+        ? `${p.sessionName} — ${p.paneTitle}`
+        : p.sessionName
+      return `  • *${label}*    \`${id}\`${watchedMark}`
     })
     await respond('*Claude sessions:*\n' + lines.join('\n'))
   }

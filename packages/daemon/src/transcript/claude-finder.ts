@@ -7,6 +7,9 @@ import type { ITerminalAdapter } from '../adapters/interface.js'
 export interface ClaudePane {
   paneId: string
   sessionName: string
+  /** Per-pane title (cmux surface title). Often reflects the current Claude
+   *  task and differs from the workspace name — more useful as a list label. */
+  paneTitle?: string
   sessionId: string       // UUID from --session-id arg
   cwd: string | null      // working directory of the claude process
   jsonlPath: string | null // ~/.claude/projects/<encoded-cwd>/<session-id>.jsonl
@@ -15,6 +18,7 @@ export interface ClaudePane {
 interface PaneEntry {
   paneId: string
   sessionName: string
+  paneTitle?: string
   shellPid: number | null
 }
 
@@ -36,7 +40,7 @@ export async function findClaudePanes(adapter: ITerminalAdapter): Promise<Claude
     for (const window of session.windows) {
       for (const pane of window.panes) {
         const shellPid = adapter.getPanePid ? await adapter.getPanePid(pane.id) : null
-        paneEntries.push({ paneId: pane.id, sessionName: session.name, shellPid })
+        paneEntries.push({ paneId: pane.id, sessionName: session.name, paneTitle: pane.title, shellPid })
       }
     }
   }
@@ -92,6 +96,7 @@ export async function findClaudePanes(adapter: ITerminalAdapter): Promise<Claude
     results.push({
       paneId: match.paneId,
       sessionName: match.sessionName,
+      paneTitle: match.paneTitle,
       sessionId: proc.sessionId,
       cwd,
       jsonlPath: jsonlExists ? jsonlPath : null,
@@ -130,7 +135,7 @@ function findAncestorPane(
   pid: number,
   parentOf: Map<number, number>,
   shellPidToEntry: Map<number, PaneEntry>,
-): { paneId: string; sessionName: string } | null {
+): PaneEntry | null {
   let current = pid
   const visited = new Set<number>()
   while (current > 1 && !visited.has(current)) {
