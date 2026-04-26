@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Features
+
+- **Watch bootstrap summary** — attaching to an already-running Claude session used to leave the Slack thread empty until Claude's next activity, so viewers had no context. `watch` now reads the tail of the JSONL and posts a one-line `*Last prompt:*` / `*Last response:*` summary to the thread before entering live-tail. Best-effort: a missing or unreadable file posts nothing, as before.
+
 ### Fixes
 
 - **`list` command shows workspace name only** — the Slack `list` response labeled every Claude session with its cmux workspace name, which made two panes in the same workspace indistinguishable and hid the current task. `list` now renders `*Workspace — Surface title*` when the two differ (falling back to workspace-only when they match or when the adapter doesn't expose a pane title). The cmux adapter already parses the surface title from `list-panels`; it's now propagated through `Pane.title` → `ClaudePane.paneTitle` → the list renderer.

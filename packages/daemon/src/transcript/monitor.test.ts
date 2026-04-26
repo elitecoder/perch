@@ -19,7 +19,7 @@ function jsonlPath(name = 'session.jsonl'): string {
   return join(tmp, name)
 }
 
-function makeMockPoster(view: Partial<ConversationalView>): Poster {
+function makeMockPoster(view: Partial<ConversationalView>, overrides: Partial<Poster> = {}): Poster {
   if (!view.flush) view.flush = vi.fn().mockResolvedValue(undefined)
   return {
     makeConversationalView: () => view as ConversationalView,
@@ -27,6 +27,8 @@ function makeMockPoster(view: Partial<ConversationalView>): Poster {
     removeReaction: vi.fn().mockResolvedValue(undefined),
     setTypingStatus: vi.fn().mockResolvedValue(undefined),
     clearTypingStatus: vi.fn().mockResolvedValue(undefined),
+    postToThread: vi.fn().mockResolvedValue({ ts: 'summary-ts' }),
+    ...overrides,
   } as unknown as Poster
 }
 
@@ -39,7 +41,7 @@ describe('TranscriptMonitor', () => {
     const poster = makeMockPoster({ updateStatus, postResponse: vi.fn(), postUser: vi.fn() })
 
     const monitor = new TranscriptMonitor()
-    monitor.watch('pane:1', path, poster, 'ts-1')
+    await monitor.watch('pane:1', path, poster, 'ts-1')
 
     // Write an assistant record with a tool call
     await appendFile(
@@ -71,7 +73,7 @@ describe('TranscriptMonitor', () => {
     const poster = makeMockPoster({ updateStatus: vi.fn(), postResponse, postUser: vi.fn() })
 
     const monitor = new TranscriptMonitor()
-    monitor.watch('pane:2', path, poster, 'ts-2')
+    await monitor.watch('pane:2', path, poster, 'ts-2')
 
     await appendFile(
       path,
@@ -91,6 +93,57 @@ describe('TranscriptMonitor', () => {
     await monitor.tick('pane:2')
     expect(postResponse).toHaveBeenCalledWith('I fixed the bug.')
 
+    monitor.dispose()
+  })
+
+  it('posts a context summary to the thread when attaching to a non-empty transcript', async () => {
+    const path = jsonlPath('with-history.jsonl')
+    await writeFile(path, '')
+    await appendFile(path, JSON.stringify({
+      type: 'user',
+      message: { role: 'user', content: 'fix the flaky test' },
+    }) + '\n')
+    await appendFile(path, JSON.stringify({
+      type: 'assistant',
+      message: {
+        model: 'claude',
+        id: 'msg',
+        role: 'assistant',
+        content: [{ type: 'text', text: 'found it — patching now' }],
+        stop_reason: 'end_turn',
+      },
+    }) + '\n')
+
+    const postToThread = vi.fn().mockResolvedValue({ ts: 'summary-ts' })
+    const poster = makeMockPoster(
+      { updateStatus: vi.fn(), postResponse: vi.fn(), postUser: vi.fn() },
+      { postToThread } as Partial<Poster>,
+    )
+
+    const monitor = new TranscriptMonitor()
+    await monitor.watch('pane:summary', path, poster, 'ts-summary')
+
+    expect(postToThread).toHaveBeenCalledTimes(1)
+    const [, text] = postToThread.mock.calls[0]!
+    expect(text).toContain('*Last prompt:* fix the flaky test')
+    expect(text).toContain('*Last response:* found it')
+    monitor.dispose()
+  })
+
+  it('does not post a summary when attaching to an empty transcript', async () => {
+    const path = jsonlPath('empty.jsonl')
+    await writeFile(path, '')
+
+    const postToThread = vi.fn().mockResolvedValue({ ts: 'summary-ts' })
+    const poster = makeMockPoster(
+      { updateStatus: vi.fn(), postResponse: vi.fn(), postUser: vi.fn() },
+      { postToThread } as Partial<Poster>,
+    )
+
+    const monitor = new TranscriptMonitor()
+    await monitor.watch('pane:empty', path, poster, 'ts-empty')
+
+    expect(postToThread).not.toHaveBeenCalled()
     monitor.dispose()
   })
 

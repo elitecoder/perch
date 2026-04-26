@@ -7,6 +7,7 @@ import { ConversationalView } from '../slack/poster.js'
 import type { SlackAction } from './formatter.js'
 import { TranscriptReader } from './reader.js'
 import { ConversationalFormatter } from './formatter.js'
+import { summarizeTranscript, formatSummary } from './summary.js'
 
 /** Tracks emoji reaction state on the watch parent message. */
 type ReactionState = 'none' | 'eyes' | 'thinking_face' | 'wrench' | 'speech_balloon' | 'white_check_mark' | 'x' | 'hourglass_flowing_sand' | 'warning'
@@ -210,7 +211,19 @@ export class TranscriptMonitor {
     this._stubs.delete(paneId)
 
     const reader = new TranscriptReader(jsonlPath)
-    if (startFromEnd) await reader.seekToEnd()
+    if (startFromEnd) {
+      // Post a one-shot context summary to the thread before entering live-tail,
+      // so the viewer knows what Claude was doing when they attached. Best-effort:
+      // a missing or unreadable file means the user sees an empty thread as before.
+      try {
+        const summary = await summarizeTranscript(jsonlPath)
+        const text = formatSummary(summary)
+        if (text) await poster.postToThread(threadTs, text)
+      } catch (err) {
+        console.error(`[transcript] summary post failed for ${paneId}:`, err)
+      }
+      await reader.seekToEnd()
+    }
 
     const formatter = new ConversationalFormatter()
     const view = poster.makeConversationalView(threadTs)
