@@ -1,8 +1,12 @@
-import { access, readdir, stat } from 'fs/promises'
+import { access, readdir, readFile, stat } from 'fs/promises'
 import { homedir } from 'os'
 import { join } from 'path'
 import { execa } from 'execa'
 import type { ITerminalAdapter } from '../adapters/interface.js'
+
+const HOOK_STATE_DIR = join(homedir(), '.config', 'perch', 'hook-state')
+/** Hook PID→sessionId files older than this are ignored (stale claude proc). */
+const PID_SID_MAX_AGE_MS = 24 * 60 * 60 * 1000
 
 export interface ResolvedSession {
   sessionId: string
@@ -49,14 +53,37 @@ export async function resolveClaudeSession(
     }
   }
 
-  // For each candidate, find the most recently modified JSONL in its project dir.
-  // Claude Code may rotate session IDs internally, so we can't trust --session-id
-  // from argv. Instead, pick the freshest .jsonl in the project directory.
+  // For each candidate, resolve its *current* JSONL. We prefer the PID→sessionId
+  // map maintained by the Perch state hook (see hooks/state-hook.sh) — that's
+  // ground-truth because Claude invokes the hook with its live session ID, even
+  // after an internal rotation. If the hook hasn't fired for this PID yet (e.g.
+  // freshly-started session), fall back to the argv --session-id; and only if
+  // neither works, fall back to the "freshest JSONL in the project dir" heuristic
+  // (which breaks when multiple Claude procs share a CWD).
   for (const proc of candidates) {
     const projectDir = buildProjectDir(proc.cwd)
+    const viaHook = await _readPidSid(proc.pid)
+    if (viaHook) {
+      const path = join(projectDir, `${viaHook}.jsonl`)
+      try {
+        await access(path)
+        console.log(`[resolver] resolved ${paneId} → ${path} (pid ${proc.pid}, via hook)`)
+        return { sessionId: viaHook, cwd: proc.cwd, jsonlPath: path, pid: proc.pid }
+      } catch {
+        // hook-recorded session file is gone; keep trying
+      }
+    }
+    const viaArgv = join(projectDir, `${proc.sessionId}.jsonl`)
+    try {
+      await access(viaArgv)
+      console.log(`[resolver] resolved ${paneId} → ${viaArgv} (pid ${proc.pid}, via argv)`)
+      return { sessionId: proc.sessionId, cwd: proc.cwd, jsonlPath: viaArgv, pid: proc.pid }
+    } catch {
+      // fall through to freshest-JSONL heuristic
+    }
     const latest = await findLatestJsonl(projectDir)
     if (latest) {
-      console.log(`[resolver] resolved ${paneId} → ${latest.path} (pid ${proc.pid})`)
+      console.log(`[resolver] resolved ${paneId} → ${latest.path} (pid ${proc.pid}, via fallback)`)
       return { sessionId: latest.sessionId, cwd: proc.cwd, jsonlPath: latest.path, pid: proc.pid }
     } else {
       console.log(`[resolver] no JSONL files in ${projectDir}`)
@@ -222,4 +249,22 @@ function collectDescendants(root: number, tree: Map<number, number[]>): Set<numb
 
 function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms))
+}
+
+/**
+ * Look up the current session ID for a Claude PID by reading the hook-maintained
+ * PID→sessionId file. Returns null when no record exists or the record is older
+ * than PID_SID_MAX_AGE_MS (treated as stale — likely a recycled PID).
+ */
+async function _readPidSid(pid: number): Promise<string | null> {
+  const path = join(HOOK_STATE_DIR, `${pid}.sid`)
+  try {
+    const [raw, fileStat] = await Promise.all([readFile(path, 'utf8'), stat(path)])
+    if (Date.now() - fileStat.mtimeMs > PID_SID_MAX_AGE_MS) return null
+    const sid = raw.trim()
+    if (!/^[0-9a-f-]{36}$/i.test(sid)) return null
+    return sid
+  } catch {
+    return null
+  }
 }

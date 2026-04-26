@@ -28,3 +28,27 @@ echo "{\"event\":\"${EVENT}\",\"session_id\":\"${SESSION_ID}\",\"ts\":$(date +%s
 # Append event (not overwrite) so no events are lost between ticks
 SESSION_FILE="${STATE_DIR}/${SESSION_ID}.events"
 echo "${EVENT}" >> "${SESSION_FILE}"
+
+# Record pid→sessionId so the transcript resolver can disambiguate
+# same-cwd sibling Claude processes. The hook runs as a child of the
+# Claude process (or its tool-use shell) — walk up until we find a
+# process whose args contain --session-id <SESSION_ID>. $PPID alone
+# is not enough on macOS because some hook events are wrapped by an
+# extra shell. We write atomically (tmp + mv) so concurrent writers
+# never leave a half-written file for the daemon to read.
+if [ -n "${SESSION_ID}" ] && [ "${SESSION_ID}" != "unknown" ]; then
+  CUR="${PPID}"
+  CLAUDE_PID=""
+  for _ in 1 2 3 4; do
+    [ -z "${CUR}" ] || [ "${CUR}" -le 1 ] && break
+    if ps -o args= -p "${CUR}" 2>/dev/null | grep -q -- "--session-id"; then
+      CLAUDE_PID="${CUR}"
+      break
+    fi
+    CUR=$(ps -o ppid= -p "${CUR}" 2>/dev/null | tr -d ' ')
+  done
+  if [ -n "${CLAUDE_PID}" ]; then
+    TMP="${STATE_DIR}/.${CLAUDE_PID}.sid.$$"
+    printf '%s' "${SESSION_ID}" > "${TMP}" && mv "${TMP}" "${STATE_DIR}/${CLAUDE_PID}.sid"
+  fi
+fi

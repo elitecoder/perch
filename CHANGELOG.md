@@ -8,6 +8,8 @@
 
 ### Fixes
 
+- **Watch threads showing another session's content** — when two panes ran Claude inside the same repo (same `cwd`, different cmux workspaces), both watch threads received updates from whichever sibling had written most recently, because the resolver picked "the freshest JSONL in the project directory" for every Claude process sharing that directory. The state hook now records `pid → current sessionId` as a side-effect of every hook invocation, and the resolver consults that map first (falling back to argv `--session-id`, then to the old freshest-in-dir heuristic). That's ground-truth: the hook is invoked by the Claude process itself with its live session ID, even across Claude's internal rotations. Existing hook installs are updated by `perch setup`; the running daemon picks up the new mapping as each Claude fires its next hook event (activity-based — idle sessions are unaffected until they next do something).
+
 - **`list` command shows workspace name only** — the Slack `list` response labeled every Claude session with its cmux workspace name, which made two panes in the same workspace indistinguishable and hid the current task. `list` now renders `*Workspace — Surface title*` when the two differ (falling back to workspace-only when they match or when the adapter doesn't expose a pane title). The cmux adapter already parses the surface title from `list-panels`; it's now propagated through `Pane.title` → `ClaudePane.paneTitle` → the list renderer.
 
 ## 0.1.7 (2026-04-15)
