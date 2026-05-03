@@ -7,6 +7,7 @@ import { ConversationalView } from '../slack/poster.js'
 import type { SlackAction } from './formatter.js'
 import { TranscriptReader } from './reader.js'
 import { ConversationalFormatter } from './formatter.js'
+import { readPidSessionId } from './resolver.js'
 import { summarizeTranscript, formatSummary } from './summary.js'
 
 /** Tracks emoji reaction state on the watch parent message. */
@@ -645,12 +646,34 @@ export class TranscriptMonitor {
   }
 
   /**
-   * Check if Claude Code rotated to a new JSONL file. If a sibling file in the
-   * same project directory has a more recent mtime, switch the reader to it.
+   * Check if Claude Code rotated to a new JSONL file. Prefers the hook-maintained
+   * PID→sessionId map (ground truth for *this* watch's Claude process); only falls
+   * back to the "newest JSONL in the project directory" heuristic when no PID is
+   * known (e.g. tmux or tests). The directory-freshness fallback is unsafe when
+   * multiple Claude processes share a CWD — it's what caused cross-contaminated
+   * threads to ping-pong between sibling sessions, which the initial resolver
+   * hook fix (commit e30a56c) deliberately avoided.
    */
   private async _checkRotation(entry: TranscriptWatch): Promise<void> {
     const currentPath = entry.reader.filePath
     const dir = dirname(currentPath)
+
+    if (entry.claudePid !== undefined) {
+      const sid = await readPidSessionId(entry.claudePid)
+      if (!sid) return // hook hasn't fired recently — stay on current file
+      const targetPath = join(dir, `${sid}.jsonl`)
+      if (targetPath === currentPath) return
+      try {
+        await stat(targetPath)
+      } catch {
+        return // hook-recorded file doesn't exist yet
+      }
+      console.log(`[transcript] session rotated: ${currentPath} → ${targetPath} (via hook, pid ${entry.claudePid})`)
+      await entry.reader.close()
+      entry.reader = new TranscriptReader(targetPath)
+      await entry.reader.seekToEnd()
+      return
+    }
 
     let currentMtime: number
     try {

@@ -256,6 +256,10 @@ function sleep(ms: number): Promise<void> {
  * PID→sessionId file. Returns null when no record exists or the record is older
  * than PID_SID_MAX_AGE_MS (treated as stale — likely a recycled PID).
  */
+export async function readPidSessionId(pid: number): Promise<string | null> {
+  return _readPidSid(pid)
+}
+
 async function _readPidSid(pid: number): Promise<string | null> {
   const path = join(HOOK_STATE_DIR, `${pid}.sid`)
   try {

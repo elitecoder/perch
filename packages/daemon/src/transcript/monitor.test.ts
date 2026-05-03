@@ -1,6 +1,6 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest'
 import { writeFile, rm, mkdir, appendFile } from 'fs/promises'
-import { tmpdir } from 'os'
+import { homedir, tmpdir } from 'os'
 import { join } from 'path'
 import { TranscriptMonitor } from './monitor.js'
 import type { Poster, ConversationalView } from '../slack/poster.js'
@@ -228,6 +228,81 @@ describe('TranscriptMonitor', () => {
     expect(postResponse).toHaveBeenCalledWith('New content after rotation.')
 
     monitor.dispose()
+  })
+
+  it('does not rotate to a sibling JSONL in the same project dir when the watch owns a specific Claude PID', async () => {
+    // Regression: when two Claude processes share a CWD, each watch must stay
+    // pinned to its own session file. The directory-freshness heuristic used
+    // to flip watch A onto the freshest sibling (which belonged to B),
+    // cross-contaminating Slack threads.
+    const sidA = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'
+    const sidB = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb'
+    const pathA = jsonlPath(`${sidA}.jsonl`)
+    const pathB = jsonlPath(`${sidB}.jsonl`)
+    await writeFile(pathA, '')
+    // Sibling B is strictly newer — bait for the freshest-file heuristic.
+    await new Promise(r => setTimeout(r, 20))
+    await writeFile(pathB, '')
+
+    // Hook-state file: pidA owns sidA. Clean up after.
+    const pidA = 777001
+    const hookDir = join(homedir(), '.config', 'perch', 'hook-state')
+    const sidFile = join(hookDir, `${pidA}.sid`)
+    await mkdir(hookDir, { recursive: true })
+    await writeFile(sidFile, sidA)
+
+    try {
+      const postResponse = vi.fn().mockResolvedValue(undefined)
+      const poster = makeMockPoster({ updateStatus: vi.fn(), postResponse, postUser: vi.fn() })
+
+      const monitor = new TranscriptMonitor()
+      await monitor.watch('pane:A', pathA, poster, 'ts-A', undefined, true, pidA)
+
+      // Exhaust the empty-tick threshold so _checkRotation fires.
+      for (let i = 0; i < 11; i++) {
+        await monitor.tick('pane:A')
+      }
+
+      // Now write content to sibling B. If the old bug still existed, the
+      // watch would have rotated to B and would post this.
+      await appendFile(
+        pathB,
+        JSON.stringify({
+          type: 'assistant',
+          isSidechain: false,
+          message: {
+            model: 'claude-sonnet-4-6',
+            id: 'msg_b',
+            role: 'assistant',
+            content: [{ type: 'text', text: 'Sibling B content.' }],
+            stop_reason: 'end_turn',
+          },
+        }) + '\n',
+      )
+      // Write content to A so we can confirm A is still the active file.
+      await appendFile(
+        pathA,
+        JSON.stringify({
+          type: 'assistant',
+          isSidechain: false,
+          message: {
+            model: 'claude-sonnet-4-6',
+            id: 'msg_a',
+            role: 'assistant',
+            content: [{ type: 'text', text: 'Pane A content.' }],
+            stop_reason: 'end_turn',
+          },
+        }) + '\n',
+      )
+
+      await monitor.tick('pane:A')
+      expect(postResponse).toHaveBeenCalledWith('Pane A content.')
+      expect(postResponse).not.toHaveBeenCalledWith('Sibling B content.')
+
+      monitor.dispose()
+    } finally {
+      await rm(sidFile, { force: true })
+    }
   })
 
   it('calls flush after processing actions', async () => {
