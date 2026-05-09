@@ -1,6 +1,6 @@
 {
   "name": "perch",
-  "version": "0.1.8",
+  "version": "0.1.9",
   "private": true,
   "type": "module",
   "description": "Your Claude Code sessions, always within reach — from Slack, on any device",

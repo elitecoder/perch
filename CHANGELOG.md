@@ -1,6 +1,12 @@
 # Changelog
 
-## Unreleased
+## 0.1.9 (2026-05-09)
+
+### Fixes
+
+- **Thread `unwatch` didn't stop the watch** — typing `unwatch` inside a watch thread appeared to do nothing: Claude kept posting, and the confirmation either never appeared or showed up at the channel root. Bolt's `say()` helper only carries `{token, text, channel}` — it drops `thread_ts` even when the triggering message was a thread reply — so `say({ text: ':white_check_mark: Stopped watching …' })` posted to channel root instead of in the thread. The thread branch of `handleText` now uses `poster.postToThread(threadTs, …)` for both the `keys`/`help` listing and the `unwatch` confirmation, and also clears `watchThreads[paneId]` so a daemon restart can't re-resume into a ghost thread. Added a unit regression in `socket.test.ts` that asserts `say()` is never called on thread replies and that `chat.postMessage` is dispatched with the correct `thread_ts` — a mutation probe (reverting to `say({text})`) was verified to make the test fail.
+
+## 0.1.8 (2026-04-26)
 
 ### Features
 

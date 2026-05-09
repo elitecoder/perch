@@ -235,33 +235,77 @@ describe('createSocketApp', () => {
         expect(adapter.sendKey).toHaveBeenCalledWith('tmux:dev:@0:%0', 'C-c')
       })
 
-      it('shows help/keys message', async () => {
+      it('shows help/keys message INSIDE the thread', async () => {
         const say = vi.fn().mockResolvedValue(undefined)
+        const { WebClient } = await import('@slack/web-api') as unknown as {
+          WebClient: { mock: { results: Array<{ value: { chat: { postMessage: ReturnType<typeof vi.fn> } } }> } }
+        }
         await messageCallback({
           message: { text: 'keys', thread_ts: 'thread-1', channel: 'C0TEST', ts: '5.4' },
           say,
         })
-        const text = say.mock.calls[0]?.[0]?.text as string
-        expect(text).toContain('Keys for')
+        expect(say).not.toHaveBeenCalled()
+        const postMessage = WebClient.mock.results[0]!.value.chat.postMessage
+        const keysPost = postMessage.mock.calls.find((c: unknown[]) => {
+          const arg = c[0] as { thread_ts?: string; text?: string }
+          return arg.thread_ts === 'thread-1' && arg.text?.includes('Keys for')
+        })
+        expect(keysPost).toBeDefined()
+        const text = (keysPost![0] as { text: string }).text
         expect(text).toContain('`accept`')
         expect(text).toContain('`interrupt`')
       })
 
-      it('handles unwatch in thread', async () => {
-        vi.mock('../config.js', async (importOriginal) => {
+      it('handles unwatch in thread — posts confirmation INSIDE the thread, not channel root', async () => {
+        // Regression: `say({text})` from Bolt does NOT include thread_ts, so
+        // earlier versions of this code posted "Stopped watching" to the
+        // channel root, and the user never saw it. The thread-reply branch
+        // must use poster.postToThread so the confirmation lands in the
+        // thread — not via say().
+        const writeStateSpy = vi.fn()
+        vi.doMock('../config.js', async (importOriginal) => {
           const actual = await importOriginal() as Record<string, unknown>
           return {
             ...actual,
-            readState: vi.fn().mockReturnValue({ watches: ['tmux:dev:@0:%0'], watchThreads: {} }),
-            writeState: vi.fn(),
+            readState: vi.fn().mockReturnValue({
+              watches: ['tmux:dev:@0:%0', 'tmux:dev:@0:%1'],
+              watchThreads: { 'tmux:dev:@0:%0': 'thread-1', 'tmux:dev:@0:%1': 'thread-2' },
+            }),
+            writeState: writeStateSpy,
           }
         })
         const say = vi.fn().mockResolvedValue(undefined)
+        // Capture calls to Poster.postToThread via the mocked WebClient
+        const { WebClient } = await import('@slack/web-api') as unknown as {
+          WebClient: { mock: { results: Array<{ value: { chat: { postMessage: ReturnType<typeof vi.fn> } } }> } }
+        }
+
         await messageCallback({
           message: { text: 'unwatch', thread_ts: 'thread-1', channel: 'C0TEST', ts: '5.5' },
           say,
         })
+
         expect(watcher.unwatch).toHaveBeenCalledWith('tmux:dev:@0:%0')
+
+        // Bolt's say() must NOT be used for thread replies — it doesn't
+        // include thread_ts and would post to channel root.
+        expect(say).not.toHaveBeenCalled()
+
+        // Confirmation must land in the thread via chat.postMessage with thread_ts.
+        const postMessage = WebClient.mock.results[0]!.value.chat.postMessage
+        const threadedPosts = postMessage.mock.calls.filter((c: unknown[]) => {
+          const arg = c[0] as { thread_ts?: string; text?: string }
+          return arg.thread_ts === 'thread-1' && arg.text?.includes('Stopped watching')
+        })
+        expect(threadedPosts.length).toBe(1)
+
+        // watchThreads[paneId] must be cleaned up so resume doesn't spawn a ghost thread.
+        expect(writeStateSpy).toHaveBeenCalledWith({
+          watches: ['tmux:dev:@0:%1'],
+          watchThreads: { 'tmux:dev:@0:%1': 'thread-2' },
+        })
+
+        vi.doUnmock('../config.js')
       })
 
       it('forwards slash commands with ! prefix', async () => {

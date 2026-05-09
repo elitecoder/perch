@@ -24,6 +24,104 @@ export interface SocketAppOptions {
   watcher: WatcherManager
 }
 
+export interface HandleTextDeps {
+  adapter: ITerminalAdapter
+  watcher: WatcherManager
+  poster: Poster
+  router: CommandRouter
+}
+
+/**
+ * Build the Slack message handler. Exported for tests — lets them exercise the
+ * real code path (in particular, the thread-reply branch), instead of a copy.
+ */
+export function makeHandleText(deps: HandleTextDeps) {
+  const { adapter, watcher, poster, router } = deps
+  return async function handleText(
+    text: string,
+    ts: string | undefined,
+    threadTs: string | undefined,
+    say: (opts: { text: string; thread_ts?: string }) => Promise<unknown>,
+  ) {
+    // Strip @mention prefix so "@perch list" and "list" both work
+    const cleaned = text.replace(/^<@[A-Z0-9]+>\s*/i, '').trim()
+    if (!cleaned) return
+
+    // Thread replies → forward to the watched pane for that thread
+    if (threadTs) {
+      const entry = watcher.getByThread(threadTs)
+      if (entry) {
+        const lower = cleaned.toLowerCase()
+
+        // List available keys
+        if (lower === 'keys' || lower === 'help') {
+          const keyAliases = entry.plugin?.keyAliases ?? {}
+          const keyNames = Object.keys(keyAliases)
+          const name = entry.plugin?.displayName ?? 'Claude Code'
+          const msg = keyNames.length
+            ? `*Keys for ${name}:*\n${keyNames.map(k => `• \`${k}\` → ${keyAliases[k]}`).join('\n')}\n\nType \`unwatch\` to stop.`
+            : 'No key aliases for this preset.'
+          await poster.postToThread(threadTs, msg)
+          return
+        }
+
+        // Start a fresh thread for the same pane
+        if (lower === 'new thread' || lower === 'newthread') {
+          const sid = entry.paneId.match(/:(\d+)$/)?.[1] ?? entry.paneId.match(/%(\d+)$/)?.[1] ?? entry.paneId
+          const oldThreadTs = threadTs
+          const respond = async (text: string) => { await poster.post(text) }
+          await router.dispatch(`watch ${sid}`, respond)
+          // Post link to the new thread in the old thread
+          const { readState: rs } = await import('../config.js')
+          const newTs = rs().watchThreads?.[entry.paneId]
+          const link = newTs ? await poster.threadPermalink(newTs).catch(() => '') : ''
+          const linkText = link ? ` <${link}|Open new thread>` : ''
+          await poster.postToThread(oldThreadTs!, `:white_check_mark: Continuing in a new thread.${linkText}`)
+          return
+        }
+
+        // Unwatch from within the thread
+        if (lower === 'unwatch') {
+          watcher.unwatch(entry.paneId)
+          const { readState, writeState } = await import('../config.js')
+          const state = readState()
+          const { [entry.paneId]: _, ...remainingThreads } = state.watchThreads ?? {}
+          writeState({ ...state, watches: state.watches.filter(id => id !== entry.paneId), watchThreads: remainingThreads })
+          const sid = entry.paneId.match(/:(\d+)$/)?.[1] ?? entry.paneId.match(/%(\d+)$/)?.[1] ?? entry.paneId
+          await poster.postToThread(threadTs, `:white_check_mark: Stopped watching \`${sid}\``)
+          return
+        }
+
+        // Claude slash commands: "!clear" or ".clear" → sends "/clear" to Claude
+        // Don't recordForwardedText — slash commands are CLI-level and don't
+        // produce JSONL records, so there's nothing to suppress and activating
+        // the reactor would leave it stuck in a thinking/working loop.
+        if (cleaned.startsWith('!') || cleaned.startsWith('.')) {
+          const slashCmd = '/' + cleaned.slice(1)
+          await adapter.sendText(entry.paneId, slashCmd)
+          return
+        }
+
+        // Check if it's a key alias (esc, ctrl-c, etc.)
+        const keyAliases = entry.plugin?.keyAliases ?? {}
+        const keyAlias = keyAliases[lower]
+        if (keyAlias) {
+          await adapter.sendKey(entry.paneId, keyAlias)
+        } else {
+          watcher.recordForwardedText(entry.paneId, cleaned, ts)
+          await adapter.sendText(entry.paneId, cleaned)
+        }
+        return
+      }
+    }
+
+    const respond = async (replyText: string) => {
+      await say({ text: replyText, thread_ts: threadTs })
+    }
+    await router.dispatch(cleaned, respond)
+  }
+}
+
 export function createSocketApp(opts: SocketAppOptions): { app: AppType; poster: Poster } {
   const { botToken, appToken, channelId, adapter, plugins, watcher } = opts
 
@@ -57,88 +155,8 @@ export function createSocketApp(opts: SocketAppOptions): { app: AppType; poster:
 
   // `new <name> [--cwd <path>]` — create session and launch Claude
   router.register('new', workspaceHandlers.newClaude)
-  async function handleText(
-    text: string,
-    ts: string | undefined,
-    threadTs: string | undefined,
-    say: (opts: { text: string; thread_ts?: string }) => Promise<unknown>,
-  ) {
-    // Strip @mention prefix so "@perch list" and "list" both work
-    const cleaned = text.replace(/^<@[A-Z0-9]+>\s*/i, '').trim()
-    if (!cleaned) return
 
-    // Thread replies → forward to the watched pane for that thread
-    if (threadTs) {
-      const entry = watcher.getByThread(threadTs)
-      if (entry) {
-        const lower = cleaned.toLowerCase()
-
-        // List available keys
-        if (lower === 'keys' || lower === 'help') {
-          const keyAliases = entry.plugin?.keyAliases ?? {}
-          const keyNames = Object.keys(keyAliases)
-          const name = entry.plugin?.displayName ?? 'Claude Code'
-          const msg = keyNames.length
-            ? `*Keys for ${name}:*\n${keyNames.map(k => `• \`${k}\` → ${keyAliases[k]}`).join('\n')}\n\nType \`unwatch\` to stop.`
-            : 'No key aliases for this preset.'
-          await say({ text: msg })
-          return
-        }
-
-        // Start a fresh thread for the same pane
-        if (lower === 'new thread' || lower === 'newthread') {
-          const sid = entry.paneId.match(/:(\d+)$/)?.[1] ?? entry.paneId.match(/%(\d+)$/)?.[1] ?? entry.paneId
-          const oldThreadTs = threadTs
-          const respond = async (text: string) => { await poster.post(text) }
-          await router.dispatch(`watch ${sid}`, respond)
-          // Post link to the new thread in the old thread
-          const { readState: rs } = await import('../config.js')
-          const newTs = rs().watchThreads?.[entry.paneId]
-          const link = newTs ? await poster.threadPermalink(newTs).catch(() => '') : ''
-          const linkText = link ? ` <${link}|Open new thread>` : ''
-          await poster.postToThread(oldThreadTs!, `:white_check_mark: Continuing in a new thread.${linkText}`)
-          return
-        }
-
-        // Unwatch from within the thread
-        if (lower === 'unwatch') {
-          watcher.unwatch(entry.paneId)
-          const { readState, writeState } = await import('../config.js')
-          const state = readState()
-          writeState({ ...state, watches: state.watches.filter(id => id !== entry.paneId) })
-          const sid = entry.paneId.match(/:(\d+)$/)?.[1] ?? entry.paneId.match(/%(\d+)$/)?.[1] ?? entry.paneId
-          await say({ text: `:white_check_mark: Stopped watching \`${sid}\`` })
-          return
-        }
-
-        // Claude slash commands: "!clear" or ".clear" → sends "/clear" to Claude
-        // Don't recordForwardedText — slash commands are CLI-level and don't
-        // produce JSONL records, so there's nothing to suppress and activating
-        // the reactor would leave it stuck in a thinking/working loop.
-        if (cleaned.startsWith('!') || cleaned.startsWith('.')) {
-          const slashCmd = '/' + cleaned.slice(1)
-          await adapter.sendText(entry.paneId, slashCmd)
-          return
-        }
-
-        // Check if it's a key alias (esc, ctrl-c, etc.)
-        const keyAliases = entry.plugin?.keyAliases ?? {}
-        const keyAlias = keyAliases[lower]
-        if (keyAlias) {
-          await adapter.sendKey(entry.paneId, keyAlias)
-        } else {
-          watcher.recordForwardedText(entry.paneId, cleaned, ts)
-          await adapter.sendText(entry.paneId, cleaned)
-        }
-        return
-      }
-    }
-
-    const respond = async (replyText: string) => {
-      await say({ text: replyText, thread_ts: threadTs })
-    }
-    await router.dispatch(cleaned, respond)
-  }
+  const handleText = makeHandleText({ adapter, watcher, poster, router })
 
   const UPLOAD_DIR = join(tmpdir(), 'perch-uploads')
 
