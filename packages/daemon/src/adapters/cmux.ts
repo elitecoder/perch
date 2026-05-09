@@ -165,6 +165,11 @@ export class CmuxAdapter implements ITerminalAdapter {
     })
   }
 
+  async getPaneTty(paneId: string): Promise<string | null> {
+    const { workspace, surface } = this._parsePaneId(paneId)
+    return this._getSurfaceTty(workspace || undefined, surface)
+  }
+
   async getPanePid(paneId: string): Promise<number | null> {
     try {
       const { workspace, surface } = this._parsePaneId(paneId)

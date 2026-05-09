@@ -43,6 +43,14 @@ export interface ITerminalAdapter {
    */
   getPanePid?(paneId: string): Promise<number | null>
 
+  /**
+   * Return the TTY device name (e.g. "ttys009") this pane is bound to, without
+   * the "/dev/" prefix. Used by the Claude-pane finder to match `ps` output
+   * 1:1 with panes — a TTY belongs to exactly one pane, so this avoids the
+   * fragile ancestor-PID walk that misses nested shell wrappings.
+   */
+  getPaneTty?(paneId: string): Promise<string | null>
+
   // Writing
   sendText(paneId: string, text: string): Promise<void>
   sendKey(paneId: string, key: string): Promise<void>

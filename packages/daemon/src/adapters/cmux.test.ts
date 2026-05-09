@@ -311,4 +311,69 @@ describe('CmuxAdapter', () => {
       await expect(adapter.selectPane('cmux:workspace:1:surface:5')).resolves.toBeUndefined()
     })
   })
+
+  describe('getPaneTty', () => {
+    it('runs cmux tree scoped to the pane workspace and parses tty=', async () => {
+      mockOutput('surface surface:5 [terminal] "title" tty=ttys009')
+      const tty = await adapter.getPaneTty('cmux:workspace:1:surface:5')
+      expect(tty).toBe('ttys009')
+      expect(mockExeca).toHaveBeenCalledWith(
+        expect.stringContaining('cmux'),
+        ['tree', '--workspace', 'workspace:1'],
+      )
+    })
+
+    it('falls back to --all when pane id has no workspace component', async () => {
+      mockOutput('surface surface:5 [terminal] "title" tty=ttys009')
+      const tty = await adapter.getPaneTty('surface:5')
+      expect(tty).toBe('ttys009')
+      expect(mockExeca).toHaveBeenCalledWith(
+        expect.stringContaining('cmux'),
+        ['tree', '--all'],
+      )
+    })
+
+    it('returns null when the tree output has no tty= token for the surface', async () => {
+      mockOutput('surface surface:5 [terminal] "no tty here"')
+      const tty = await adapter.getPaneTty('cmux:workspace:1:surface:5')
+      expect(tty).toBeNull()
+    })
+
+    it('returns null when cmux tree throws', async () => {
+      mockExeca.mockRejectedValueOnce(new Error('daemon down') as never)
+      const tty = await adapter.getPaneTty('cmux:workspace:1:surface:5')
+      expect(tty).toBeNull()
+    })
+  })
+
+  describe('getPanePid', () => {
+    it('returns null when the surface has no tty', async () => {
+      mockOutput('surface surface:5 [terminal] "no tty"')
+      expect(await adapter.getPanePid('cmux:workspace:1:surface:5')).toBeNull()
+    })
+
+    it('returns the first login-shell pid on the tty', async () => {
+      mockOutput('surface surface:5 [terminal] "x" tty=ttys009')
+      mockOutput(' 12345 -/bin/zsh\n 12400 vim main.ts\n')
+      const pid = await adapter.getPanePid('cmux:workspace:1:surface:5')
+      expect(pid).toBe(12345)
+    })
+
+    it('returns null when no login shell on the tty', async () => {
+      mockOutput('surface surface:5 [terminal] "x" tty=ttys009')
+      mockOutput(' 12400 vim main.ts\n')
+      expect(await adapter.getPanePid('cmux:workspace:1:surface:5')).toBeNull()
+    })
+
+    it('returns null when cmux tree throws', async () => {
+      mockExeca.mockRejectedValueOnce(new Error('daemon down') as never)
+      expect(await adapter.getPanePid('cmux:workspace:1:surface:5')).toBeNull()
+    })
+
+    it('returns null when ps -t throws', async () => {
+      mockOutput('surface surface:5 [terminal] "x" tty=ttys009')
+      mockExeca.mockRejectedValueOnce(new Error('ps fail') as never)
+      expect(await adapter.getPanePid('cmux:workspace:1:surface:5')).toBeNull()
+    })
+  })
 })
