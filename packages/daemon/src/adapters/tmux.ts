@@ -162,6 +162,23 @@ export class TmuxAdapter implements ITerminalAdapter {
     }
   }
 
+  async getPaneTty(paneId: string): Promise<string | null> {
+    try {
+      const tmuxTarget = this._toTmuxTarget(paneId)
+      const { stdout } = await execa('tmux', [
+        'display-message',
+        '-t', tmuxTarget,
+        '-p', '#{pane_tty}',
+      ])
+      const raw = stdout.trim()
+      if (!raw) return null
+      // tmux returns full path like "/dev/ttys009"; ps -o tty= uses "ttys009"
+      return raw.replace(/^\/dev\//, '')
+    } catch {
+      return null
+    }
+  }
+
   /** Convert a perch pane id "tmux:session:window:pane" → tmux target "pane" */
   private _toTmuxTarget(paneId: string): string {
     const parts = paneId.split(':')

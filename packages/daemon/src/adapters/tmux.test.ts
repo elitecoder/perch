@@ -204,4 +204,51 @@ describe('TmuxAdapter', () => {
       expect(pane.id).toBe('tmux:main:@0:%3')
     })
   })
+
+  describe('getPanePid', () => {
+    it('queries #{pane_pid} and parses it', async () => {
+      mockOutput('12345\n')
+      const pid = await adapter.getPanePid('tmux:main:@0:%2')
+      expect(pid).toBe(12345)
+      expect(mockExeca).toHaveBeenCalledWith('tmux', [
+        'display-message', '-t', '%2', '-p', '#{pane_pid}',
+      ])
+    })
+
+    it('returns null when pid is non-numeric', async () => {
+      mockOutput('not-a-number\n')
+      expect(await adapter.getPanePid('tmux:main:@0:%2')).toBeNull()
+    })
+
+    it('returns null when display-message throws', async () => {
+      mockExeca.mockRejectedValueOnce(new Error('no such pane') as never)
+      expect(await adapter.getPanePid('tmux:main:@0:%2')).toBeNull()
+    })
+  })
+
+  describe('getPaneTty', () => {
+    it('strips /dev/ prefix from #{pane_tty}', async () => {
+      mockOutput('/dev/ttys009\n')
+      const tty = await adapter.getPaneTty('tmux:main:@0:%2')
+      expect(tty).toBe('ttys009')
+      expect(mockExeca).toHaveBeenCalledWith('tmux', [
+        'display-message', '-t', '%2', '-p', '#{pane_tty}',
+      ])
+    })
+
+    it('returns the value unchanged when not prefixed with /dev/', async () => {
+      mockOutput('ttys009\n')
+      expect(await adapter.getPaneTty('tmux:main:@0:%2')).toBe('ttys009')
+    })
+
+    it('returns null when display-message returns blank', async () => {
+      mockOutput('')
+      expect(await adapter.getPaneTty('tmux:main:@0:%2')).toBeNull()
+    })
+
+    it('returns null when display-message throws', async () => {
+      mockExeca.mockRejectedValueOnce(new Error('no such pane') as never)
+      expect(await adapter.getPaneTty('tmux:main:@0:%2')).toBeNull()
+    })
+  })
 })
