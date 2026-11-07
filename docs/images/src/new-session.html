@@ -1,0 +1,47 @@
+<!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" href="kit.css"><script src="dark.js"></script>
+<style>.k{font-size:15px} svg text{font-size:16px} svg text.t{font-size:15px} svg text.b{font-size:15px}</style></head>
+<body><div id="fig" style="width:1200px">
+<div class="k">new sessions</div><div class="h">Start a session <em>from your phone</em>.</div>
+<p class="cap">Perch opens a terminal on your Mac, starts Claude there, and hands you the ID to watch.</p>
+<svg viewBox="0 0 1104 424" width="1104" height="424" style="margin-top:28px">
+<text class="t" x="0" y="20">in the Slack channel</text>
+<!-- 1: you ask -->
+<rect class="f" x="0" y="40" width="340" height="100" rx="6"/>
+<text x="16" y="72">you</text>
+<text class="b" x="16" y="104">new web-app --cwd ~/code/web-app</text>
+<!-- 3: perch replies -->
+<rect class="f" x="382" y="40" width="340" height="100" rx="6"/>
+<text x="398" y="72">perch</text>
+<text class="b" x="398" y="100">Created session web-app — 7</text>
+<text class="b" x="398" y="124">Use watch 7 to monitor.</text>
+<!-- 4: you watch -->
+<rect class="f" x="764" y="40" width="340" height="100" rx="6"/>
+<text x="780" y="72">you</text>
+<text class="b" x="780" y="104">watch 7</text>
+
+<path d="M722 90 H762"/><path d="M752 82 L762 90 L752 98"/>
+
+<!-- terminal -->
+<rect class="f" x="160" y="240" width="400" height="130" rx="4"/>
+<path d="M160 266 H560"/>
+<circle cx="176" cy="253" r="3"/><circle cx="190" cy="253" r="3"/><circle cx="204" cy="253" r="3"/>
+<text class="t" x="222" y="258">web-app</text>
+<text x="180" y="306">$ claude <tspan style="fill:var(--mark);stroke:none">--permission-mode auto</tspan></text>
+<text class="t" x="180" y="342">in ~/code/web-app</text>
+<text class="t" x="160" y="404">a new cmux workspace or tmux session</text>
+
+<!-- arrows -->
+<path d="M240 140 V238"/><path d="M232 228 L240 238 L248 228"/>
+<text class="t" x="226" y="184" text-anchor="end">creates it and</text>
+<text class="t" x="226" y="206" text-anchor="end">types the command</text>
+<path d="M500 240 V142"/><path d="M492 152 L500 142 L508 152"/>
+<text class="t" x="514" y="196">replies with its ID</text>
+
+<!-- thread -->
+<path d="M934 140 V238"/><path d="M926 228 L934 238 L942 228"/>
+<text class="t" x="948" y="196">opens a thread</text>
+<rect class="w" x="764" y="240" width="340" height="130" rx="6"/>
+<text class="b" x="780" y="276">Watching 7 with Claude Code —</text>
+<text class="b" x="780" y="300">replies here will be forwarded</text>
+<text class="b" x="780" y="342">Started watching 7</text>
+</svg></div></body></html>

@@ -1,154 +1,132 @@
-# Perch: manage Claude Code from Slack
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/banner-dark.png">
+  <img alt="Perch: your Claude Code sessions, within reach from Slack on any device." src="docs/images/banner-light.png">
+</picture>
 
 [![GitHub Stars](https://img.shields.io/github/stars/elitecoder/perch?style=flat-square)](https://github.com/elitecoder/perch)
-[![Node.js 20+](https://img.shields.io/badge/node-20%2B-blue?style=flat-square)](https://nodejs.org/)
+[![Node.js 20–22 or 25+](https://img.shields.io/badge/node-20--22%20%7C%2025%2B-blue?style=flat-square)](https://nodejs.org/)
 [![License: Apache 2.0](https://img.shields.io/badge/license-Apache%202.0-green?style=flat-square)](./LICENSE)
 [![Open Issues](https://img.shields.io/github/issues/elitecoder/perch?style=flat-square)](https://github.com/elitecoder/perch/issues)
 
-Launch, watch, and talk to Claude Code sessions from Slack — on any device.
+**Your Claude Code sessions, always within reach — from Slack, on any device.**
 
-Perch is a macOS daemon that connects Slack to your terminal multiplexer (tmux or cmux). It monitors Claude Code via transcript files, so you see exactly what Claude is doing: tool calls, responses, and state changes — streamed to a Slack thread in real time.
-
-*No SSH. No port forwarding. No VPN. Just Slack.*
+Claude Code keeps working after you walk away from your Mac, until it stops to ask for permission. Perch is a small macOS background service that connects those terminal sessions to a Slack channel, so you can follow along, approve the next step, send prompts, and start new sessions from your phone.
 
 https://github.com/user-attachments/assets/e2c3bc02-e087-4f16-8077-e2ade7527e32
 
----
+## What it looks like
 
-## Why Perch
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/thread-dark.png">
+  <img alt="A phone showing a Perch watch thread: the Watching message, a context summary, your prompt with a status reaction, a status message listing tool calls, Claude's streaming reply, and a Waiting for approval message with Accept and Reject buttons." src="docs/images/thread-light.png">
+</picture>
 
-You're running Claude Code on your workstation. You step away. Now what?
+`watch` opens a thread for one Claude Code session. Everything you type in that thread goes to Claude.
 
-Perch lets you **stay in the loop from anywhere Slack works**. Watch Claude think, accept or reject tool calls, send follow-up prompts, and spin up new sessions — all from your phone.
+## Quick start
 
-- **Transcript-powered** — reads Claude Code's JSONL session files directly, not screen scraping. You get structured tool calls, responses, and state transitions.
-- **Live threads** — `watch` a session and get a Slack thread with streaming updates. Claude runs a bash command? You see it. Claude responds? You see it.
-- **Interactive** — reply in the thread to send prompts. Type `accept` to approve, `reject` to decline, `interrupt` to cancel.
-- **Launch remotely** — `new my-feature --cwd ~/dev/project` spins up a fresh Claude Code session.
-- **Unobtrusive** — macOS LaunchAgent, starts on login, credentials in Keychain.
+You need:
 
----
+- A Mac. Perch runs as a LaunchAgent and keeps its Slack tokens in Keychain.
+- Node.js 20, 21, 22, or 25 and later. Perch refuses to start on Node.js 23 and 24 because of a module-loading bug in those releases.
+- Git and Claude Code (`npm install -g @anthropic-ai/claude-code`).
+- tmux or cmux. If you have neither, setup offers to install cmux with Homebrew.
+- A Slack workspace where you're allowed to create an app.
 
-## Quick Start
+1. Install Perch:
 
-```bash
-# 1. Install
-curl -fsSL https://raw.githubusercontent.com/elitecoder/perch/main/scripts/install.sh | bash
+   ```bash
+   curl -fsSL https://raw.githubusercontent.com/elitecoder/perch/main/scripts/install.sh | bash
+   ```
 
-# 2. Setup (creates Slack app, stores tokens, installs daemon)
-perch setup
+   The script clones the repository to `~/.perch`, builds it, and links the `perch` command. Run it again later to update.
 
-# 3. Go to your Slack channel and type:
-#    list
-```
+2. Run the setup wizard:
 
-Setup walks you through everything: it checks for Claude Code, offers to install cmux via Homebrew if no multiplexer is found, auto-enables cmux Automation Mode, creates the Slack app, and installs the daemon. For cmux users, it also installs a Claude Code skill so your agents know how to use cmux commands natively.
+   ```bash
+   perch setup
+   ```
 
-## Slack Commands
+3. In your Slack channel, type `list`.
 
-### Sessions
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/setup-dark.png">
+  <img alt="The ten setup steps: check Claude Code, find tmux or cmux, turn on cmux Automation Mode, create the Slack app from the manifest, save the bot token and app token to Keychain, set the channel ID after inviting the bot, install Claude Code hooks, install the cmux skill, and start the LaunchAgent." src="docs/images/setup-light.png">
+</picture>
 
-| Command | Description |
-|---------|-------------|
-| `list` | List active Claude Code sessions with short IDs |
-| `new <name> [--cwd <path>]` | Create a session and launch `claude` |
+Invite the bot to your channel before you paste the channel ID. For every step, see [Slack app setup](docs/slack-app-setup.md).
 
-### Watch
+## How it works
 
-| Command | Description |
-|---------|-------------|
-| `watch <id>` | Monitor a Claude session — updates stream to a thread |
-| `unwatch <id>` | Stop monitoring |
-| `watching` | List currently watched sessions |
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/connections-dark.png">
+  <img alt="Inside your Mac, the terminal pane writes a transcript and hook files, the Perch daemon reads both and types keys and text into the pane, and the daemon keeps one outbound WebSocket to Slack. Nothing on the Mac listens for connections." src="docs/images/connections-light.png">
+</picture>
 
-### Thread Replies
+Perch reads Claude Code's JSONL transcript once a second instead of scraping the screen, and it leaves out thinking blocks and subagent activity. There's no SSH, port forwarding, or VPN involved.
 
-When you're in a watch thread, replies go directly to Claude:
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/approval-dark.png">
+  <img alt="Sequence of a permission prompt: Claude asks to run git commit, the PermissionRequest hook writes a file, Perch reads it after three quiet seconds and posts Accept and Reject buttons, you tap Accept, Perch presses Enter in the pane and the message reads Accepted, and the PostToolUse hook deletes the file. Questions, plan mode, and attention prompts get their own buttons." src="docs/images/approval-light.png">
+</picture>
 
-| Reply | Effect |
-|-------|--------|
-| Any text | Sent as a prompt to Claude |
-| `accept` | Press Enter (approve tool call) |
-| `reject` | Press Escape (decline) |
-| `interrupt` | Send Ctrl-C |
-| `expand` | Send Ctrl-O (expand input) |
-| `esc` / `escape` | Press Escape |
-| `confirm` / `enter` | Press Enter |
-| `tab`, `up`, `down`, `left`, `right`, `space` | Navigation keys |
-| `keys` / `help` | List all available key aliases |
-| `unwatch` | Stop watching from the thread |
+Each watch thread follows its own session, even when two sessions share a folder, and watches resume in the same threads after a restart. For the package layout and every file Perch writes, see [Architecture](docs/architecture.md).
 
-You can also send images and files as attachments in a watch thread — they're downloaded and forwarded to the Claude session.
+## Slack commands
 
-### System
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/new-session-dark.png">
+  <img alt="You type new web-app --cwd ~/code/web-app. Perch creates a cmux workspace or tmux session named web-app, types claude --permission-mode auto in it, and replies Created session web-app with ID 7. You type watch 7 and a thread opens." src="docs/images/new-session-light.png">
+</picture>
 
-| Command | Description |
-|---------|-------------|
-| `help` | Show command reference |
-| `status` | Daemon status, uptime, active watches |
+Type these in the configured channel, either plain or as an @mention.
 
-## How It Works
+| Command | What it does |
+|---------|--------------|
+| `list` (or `ls`) | Lists running Claude Code sessions with their short IDs. |
+| `new <name> [--cwd <path>]` | Creates a session and runs `claude --permission-mode auto` in it. |
+| `watch <id>` | Opens a thread for a session. Watching it again starts a fresh thread. |
+| `unwatch <id>` | Stops streaming a session. |
+| `watching` | Lists the sessions you're watching. |
+| `status` | Shows the multiplexer in use, uptime, and current watches. |
+| `help` | Shows the command list. |
 
-```
-You (Slack) ──→ Perch daemon ──→ terminal multiplexer ──→ Claude Code
-                     │
-                     ├── reads JSONL transcript
-                     └── posts structured updates to Slack thread
-```
+`<id>` is the short number that `list` shows. Full pane IDs, such as `cmux:workspace:1:surface:5`, also work.
 
-Perch reads Claude Code's transcript files (`~/.claude/projects/.../*.jsonl`) to understand what's happening — tool calls, responses, state changes. This is more reliable than screen scraping and gives you structured output.
+### Replies inside a watch thread
 
-**Watch thread flow:**
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/replies-dark.png">
+  <img alt="How Perch handles a thread reply, checked in order: an image or file is downloaded and its path sent to Claude; keys or help lists the key words; new thread moves the watch; unwatch stops it; !clear or .clear sends /clear; accept, confirm, and enter press Enter; reject, esc, and escape press Esc; interrupt presses Ctrl-C; expand presses Ctrl-O; tab, up, down, left, right, and space press that key; anything else is typed into the pane as a prompt." src="docs/images/replies-light.png">
+</picture>
 
-1. You type `watch 5` in Slack
-2. Perch finds the Claude Code session in pane `5`, locates its transcript file
-3. A Slack thread is created — new transcript entries are posted as they appear
-4. You reply in the thread — your text is sent to Claude as input
-5. Key aliases like `accept` are translated to keystrokes
+Any `!<command>` or `.<command>` becomes `/<command>`. Attached files are saved to `$TMPDIR/perch-uploads/`.
 
-**Watches persist across restarts** — if the daemon restarts, it picks up where it left off.
+## Command-line tool
 
-## CLI
+| Command | What it does |
+|---------|--------------|
+| `perch setup` | Runs the setup wizard. Rerun it any time; it keeps your tokens and channel ID. |
+| `perch status` | Reports whether the daemon is running. |
+| `perch restart` | Restarts the daemon. |
+| `perch logs` | Follows the daemon's output and error logs. |
+| `perch uninstall` | Removes Perch: the daemon, Keychain entries, Claude Code hooks, the cmux skill, `~/.config/perch`, `~/.perch`, and the `perch` command. |
 
-```bash
-perch setup      # Interactive setup wizard
-perch status     # Check daemon status
-perch restart    # Restart the daemon
-perch logs       # Tail daemon logs
-perch uninstall  # Remove everything cleanly
-```
+## Security model
 
-## Supported Multiplexers
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/access-dark.png">
+  <img alt="Messages from you or any other member of the configured channel reach your sessions as if you typed them. Messages from bots, other channels, and direct messages are ignored." src="docs/images/access-light.png">
+</picture>
 
-| Multiplexer | Detection |
-|-------------|-----------|
-| **tmux** | `which tmux` |
-| **cmux** | App bundle path or `which cmux` |
-
-## Architecture
-
-Monorepo with three packages:
-
-```
-packages/
-  shared/     Config types and read/write utilities
-  cli/        CLI — setup wizard, status, restart, logs, uninstall
-  daemon/     Background daemon:
-                slack/       Slack Socket Mode connection
-                adapters/    tmux + cmux terminal adapters
-                transcript/  JSONL transcript reader + monitor
-                watcher/     Orchestrates polling and Slack updates
-                plugins/     Claude Code state detection
-                commands/    Slack command handlers
-scripts/      curl installer
-skills/       Claude Code skills (installed to ~/.claude/skills/)
-slack/        Slack app manifest
-launchd/      LaunchAgent plist template
-```
+- **Use a private channel that only you belong to.** Perch doesn't check who sent a message.
+- **Tokens stay in Keychain** under the service `dev.perch`, not in a file.
+- **New sessions run in auto permission mode.** Sessions you start yourself keep whatever mode you gave them.
+- **Hooks are tagged.** Every hook Perch adds to `~/.claude/settings.json` carries `"_perch": "perch-managed"`, and setup and uninstall touch only those entries.
 
 ## Configuration
 
-Stored at `~/.config/perch/config.json`:
+Setup writes `~/.config/perch/config.json`. You rarely need to edit it.
 
 ```json
 {
@@ -159,24 +137,46 @@ Stored at `~/.config/perch/config.json`:
 }
 ```
 
-Credentials are stored in macOS Keychain (service `dev.perch`), not on disk.
+| Key | Meaning |
+|-----|---------|
+| `slackChannelId` | The only channel Perch listens and posts in. |
+| `adapterPriority` | Multiplexers to try, in order. Perch uses the first one that's available. |
+| `defaultPreset` | The monitoring plugin for new watches. Claude Code (`claude`) is the only built-in plugin, and Perch saves it here on your first watch. |
+| `panePresets` | Per-pane plugin overrides, set with the `preset <pane> <plugin-id>` Slack command. |
 
-## Install / Update / Uninstall
+Perch runs cmux from `/Applications/cmux.app/Contents/Resources/bin/cmux`, or from the path in the `CMUX_BIN` environment variable when it's set. Logs go to `~/.config/perch/stdout.log` and `~/.config/perch/stderr.log`.
+
+### Supported multiplexers
+
+| Multiplexer | How setup finds it |
+|-------------|--------------------|
+| tmux | `which tmux` |
+| cmux | `which cmux`, or the app bundle at `/Applications/cmux.app`. Perch needs cmux's Automation Mode, which setup offers to turn on. It also installs a cmux skill to `~/.claude/skills/cmux/` so Claude Code knows the cmux commands. |
+
+## Development
+
+Perch is a pnpm workspace with three TypeScript packages: `shared` (config), `cli` (the `perch` command), and `daemon` (the background service).
 
 ```bash
-# Install (or update — same command)
-curl -fsSL https://raw.githubusercontent.com/elitecoder/perch/main/scripts/install.sh | bash
-
-# Uninstall
-perch uninstall
+pnpm install
+pnpm build           # build all packages
+pnpm test            # unit tests (vitest) for cli and daemon
+pnpm test:coverage   # unit tests with coverage
+pnpm dev             # rebuild the daemon on change
 ```
 
-Requires Node.js 20+. Installs to `~/.perch`, links `perch` globally.
+End-to-end tests drive a real cmux or tmux, and the Slack suite posts to your configured channel with the tokens from your setup. CI runs them on a self-hosted runner:
+
+```bash
+pnpm --filter daemon exec npx vitest run --config vitest.e2e.config.ts
+```
+
+See [CHANGELOG.md](CHANGELOG.md) for release history.
 
 ## Contributing
 
-Contributions welcome! Open an issue or PR at [github.com/elitecoder/perch](https://github.com/elitecoder/perch).
+Open an issue or a pull request at [github.com/elitecoder/perch](https://github.com/elitecoder/perch).
 
 ## License
 
-Apache 2.0
+[Apache 2.0](LICENSE). Perch is built by Mukul Sharma ([mukul.app](https://mukul.app)).
