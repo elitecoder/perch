@@ -2,11 +2,6 @@
 
 Perch is a pnpm workspace with three ESM TypeScript packages. The `perch` command sets things up; a background daemon does the work.
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="images/connections-dark.png">
-  <img alt="Inside your Mac, the terminal pane writes a transcript and hook files, the Perch daemon reads both and types keys and text into the pane, and the daemon keeps one outbound WebSocket to Slack." src="images/connections-light.png">
-</picture>
-
 ```text
 packages/
   shared/       Config types and read/write helpers for ~/.config/perch
@@ -34,11 +29,6 @@ Slack message → socket.ts handleText() → CommandRouter.dispatch()
 ```
 
 `handleText()` in `packages/daemon/src/slack/socket.ts` is the entry point. It strips a leading @mention and sends anything outside a watch thread to the command router. Messages from other channels and from bots never reach it. A reply in a watch thread takes the first matching branch:
-
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="images/replies-dark.png">
-  <img alt="How Perch handles a thread reply, checked in order: files, keys or help, new thread, unwatch, slash commands, key words, and finally plain text typed into the pane as a prompt." src="images/replies-light.png">
-</picture>
 
 ## A watch
 
@@ -68,11 +58,6 @@ The `list` command finds sessions differently. It reads `ps` for processes start
 | `Notification` for `permission_prompt`, `idle_prompt`, and `elicitation_dialog` | `notification-hook.sh` | The prompt, in `interactive/<session>.json`. |
 | `PostToolUse` and `PostToolUseFailure` | `post-tool-use.sh` | Deletes that session's `waiting/` and `interactive/` files. |
 | `PreToolUse`, `Stop`, `UserPromptSubmit`, and `Notification` | `state-hook.sh` | Appends the event to `hook-state/<session>.events` and writes `hook-state/<pid>.sid`, the map from Claude process to current session ID. |
-
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="images/approval-dark.png">
-  <img alt="Sequence of a permission prompt from the hook file to the Slack buttons and back to an Enter keypress in the pane." src="images/approval-light.png">
-</picture>
 
 The daemon also deletes marker files when new transcript lines arrive and ignores any older than 60 seconds, so a stale file can't produce a false "needs attention" button.
 

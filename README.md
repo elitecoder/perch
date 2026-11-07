@@ -1,27 +1,45 @@
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/images/banner-dark.png">
-  <img alt="Perch: your Claude Code sessions, within reach from Slack on any device." src="docs/images/banner-light.png">
-</picture>
+# Perch
 
 [![GitHub Stars](https://img.shields.io/github/stars/elitecoder/perch?style=flat-square)](https://github.com/elitecoder/perch)
 [![Node.js 20–22 or 25+](https://img.shields.io/badge/node-20--22%20%7C%2025%2B-blue?style=flat-square)](https://nodejs.org/)
 [![License: Apache 2.0](https://img.shields.io/badge/license-Apache%202.0-green?style=flat-square)](./LICENSE)
 [![Open Issues](https://img.shields.io/github/issues/elitecoder/perch?style=flat-square)](https://github.com/elitecoder/perch/issues)
 
-**Your Claude Code sessions, always within reach — from Slack, on any device.**
+**Your Claude Code sessions, from Slack on any device.**
 
-Claude Code keeps working after you walk away from your Mac, until it stops to ask for permission. Perch is a small macOS background service that connects those terminal sessions to a Slack channel, so you can follow along, approve the next step, send prompts, and start new sessions from your phone.
+Claude Code keeps working after you walk away from your Mac, until it stops to ask you something. Perch is a small macOS background service that connects your terminal sessions to a Slack channel. From your phone, you can follow along, answer prompts, send new instructions, and start new sessions.
 
 https://github.com/user-attachments/assets/e2c3bc02-e087-4f16-8077-e2ade7527e32
 
-## What it looks like
+## Features
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/images/thread-dark.png">
-  <img alt="A phone showing a Perch watch thread: the Watching message, a context summary, your prompt with a status reaction, a status message listing tool calls, Claude's streaming reply, and a Waiting for approval message with Accept and Reject buttons." src="docs/images/thread-light.png">
-</picture>
+<table>
+<tr>
+<td width="33%" valign="top">
+<img src="docs/images/sessions.png" alt="Slack on a phone: Mukul types List, Perch replies with three Claude sessions (OpenClaw, Perch, and Trends in AI) and their IDs, and Mukul types Watch 4.">
+<h3>See every session</h3>
+Type <code>list</code> in your channel to see the Claude Code sessions running on your Mac. Then <code>watch 4</code> opens a thread for session 4.
+</td>
+<td width="33%" valign="top">
+<img src="docs/images/thread.png" alt="A watch thread on a phone: Mukul asks Claude to check Hacker News for the top news, Perch shows Claude using a skill to fetch the top 10 stories, and Claude replies with the list.">
+<h3>Follow along</h3>
+The thread streams your prompts, the tools and skills Claude runs, and its replies. Perch reads Claude Code's transcript, not the screen, so you get clean text.
+</td>
+<td width="33%" valign="top">
+<img src="docs/images/follow-up.png" alt="The same thread: Mukul asks Claude to summarize the top news, and Claude replies with a summary of the top story.">
+<h3>Reply from anywhere</h3>
+Anything you type in the thread goes to Claude, as if you typed it at your desk. Permission prompts show up as Accept and Reject buttons.
+</td>
+</tr>
+</table>
 
-`watch` opens a thread for one Claude Code session. Everything you type in that thread goes to Claude.
+**Also in the box:**
+
+- **New sessions from Slack:** `new web-app --cwd ~/code/web-app` starts a session in cmux or tmux and runs Claude Code in it.
+- **Buttons for every prompt:** permission requests, questions, plan mode, and attention prompts each get their own buttons.
+- **Files:** attach an image or file in the thread, and Claude gets its path.
+- **Restarts:** watches resume in the same threads after a restart.
+- **No open ports:** Perch keeps one outbound connection to Slack. There's no SSH, port forwarding, or VPN.
 
 ## Quick start
 
@@ -49,35 +67,17 @@ You need:
 
 3. In your Slack channel, type `list`.
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/images/setup-dark.png">
-  <img alt="The ten setup steps: check Claude Code, find tmux or cmux, turn on cmux Automation Mode, create the Slack app from the manifest, save the bot token and app token to Keychain, set the channel ID after inviting the bot, install Claude Code hooks, install the cmux skill, and start the LaunchAgent." src="docs/images/setup-light.png">
-</picture>
-
 Invite the bot to your channel before you paste the channel ID. For every step, see [Slack app setup](docs/slack-app-setup.md).
 
 ## How it works
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/images/connections-dark.png">
-  <img alt="Inside your Mac, the terminal pane writes a transcript and hook files, the Perch daemon reads both and types keys and text into the pane, and the daemon keeps one outbound WebSocket to Slack. Nothing on the Mac listens for connections." src="docs/images/connections-light.png">
-</picture>
+Perch reads Claude Code's JSONL transcript once a second and leaves out thinking blocks and subagent activity. To answer prompts, it types keys into the terminal pane through cmux or tmux.
 
-Perch reads Claude Code's JSONL transcript once a second instead of scraping the screen, and it leaves out thinking blocks and subagent activity. There's no SSH, port forwarding, or VPN involved.
+When Claude asks permission, a Claude Code hook writes a small file. Perch sees it, waits three quiet seconds, and posts Accept and Reject buttons. When you tap one, Perch presses the matching key in the pane.
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/images/approval-dark.png">
-  <img alt="Sequence of a permission prompt: Claude asks to run git commit, the PermissionRequest hook writes a file, Perch reads it after three quiet seconds and posts Accept and Reject buttons, you tap Accept, Perch presses Enter in the pane and the message reads Accepted, and the PostToolUse hook deletes the file. Questions, plan mode, and attention prompts get their own buttons." src="docs/images/approval-light.png">
-</picture>
-
-Each watch thread follows its own session, even when two sessions share a folder, and watches resume in the same threads after a restart. For the package layout and every file Perch writes, see [Architecture](docs/architecture.md).
+Each watch thread follows its own session, even when two sessions share a folder. For the package layout and every file Perch writes, see [Architecture](docs/architecture.md).
 
 ## Slack commands
-
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/images/new-session-dark.png">
-  <img alt="You type new web-app --cwd ~/code/web-app. Perch creates a cmux workspace or tmux session named web-app, types claude --permission-mode auto in it, and replies Created session web-app with ID 7. You type watch 7 and a thread opens." src="docs/images/new-session-light.png">
-</picture>
 
 Type these in the configured channel, either plain or as an @mention.
 
@@ -95,12 +95,17 @@ Type these in the configured channel, either plain or as an @mention.
 
 ### Replies inside a watch thread
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/images/replies-dark.png">
-  <img alt="How Perch handles a thread reply, checked in order: an image or file is downloaded and its path sent to Claude; keys or help lists the key words; new thread moves the watch; unwatch stops it; !clear or .clear sends /clear; accept, confirm, and enter press Enter; reject, esc, and escape press Esc; interrupt presses Ctrl-C; expand presses Ctrl-O; tab, up, down, left, right, and space press that key; anything else is typed into the pane as a prompt." src="docs/images/replies-light.png">
-</picture>
+Perch checks each reply in this order:
 
-Any `!<command>` or `.<command>` becomes `/<command>`. Attached files are saved to `$TMPDIR/perch-uploads/`.
+- An image or file is downloaded, and Claude gets its path.
+- `keys` or `help` lists the key words.
+- `new thread` moves the watch to a fresh thread, and `unwatch` stops it.
+- `accept`, `confirm`, and `enter` press Enter. `reject`, `esc`, and `escape` press Esc.
+- `interrupt` presses Ctrl-C, and `expand` presses Ctrl-O.
+- `tab`, `up`, `down`, `left`, `right`, and `space` press that key.
+- Anything else is typed into the session as a prompt.
+
+Any `!<command>` or `.<command>` becomes `/<command>`, so `!clear` sends `/clear`. Attached files are saved to `$TMPDIR/perch-uploads/`.
 
 ## Command-line tool
 
@@ -114,12 +119,7 @@ Any `!<command>` or `.<command>` becomes `/<command>`. Attached files are saved 
 
 ## Security model
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/images/access-dark.png">
-  <img alt="Messages from you or any other member of the configured channel reach your sessions as if you typed them. Messages from bots, other channels, and direct messages are ignored." src="docs/images/access-light.png">
-</picture>
-
-- **Use a private channel that only you belong to.** Perch doesn't check who sent a message.
+- **Use a private channel that only you belong to.** Perch doesn't check who sent a message: any member of the channel can drive your sessions. It ignores bots, other channels, and direct messages.
 - **Tokens stay in Keychain** under the service `dev.perch`, not in a file.
 - **New sessions run in auto permission mode.** Sessions you start yourself keep whatever mode you gave them.
 - **Hooks are tagged.** Every hook Perch adds to `~/.claude/settings.json` carries `"_perch": "perch-managed"`, and setup and uninstall touch only those entries.

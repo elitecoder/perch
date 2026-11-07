@@ -6,11 +6,6 @@ Each person creates their own Slack app. Setup names it `Perch-<your name>` and 
 
 ## What setup does, in order
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="images/setup-dark.png">
-  <img alt="The ten setup steps: check Claude Code, find tmux or cmux, turn on cmux Automation Mode, create the Slack app from the manifest, save the bot token and app token to Keychain, set the channel ID after inviting the bot, install Claude Code hooks, install the cmux skill, and start the LaunchAgent." src="images/setup-light.png">
-</picture>
-
 1. **Checks for Claude Code.** If `claude --version` fails, setup prints `npm install -g @anthropic-ai/claude-code` and stops.
 2. **Finds a terminal multiplexer.** With neither tmux nor cmux, it offers `brew install --cask cmux`; with both, it asks which to use.
 3. **Prepares cmux (cmux only).** Setup turns on Automation Mode with `defaults write com.cmuxterm.app socketControlMode -string automation`, restarts cmux, and checks `cmux ping`. To do it by hand, open cmux, go to **Settings > Automation**, and set **Socket Control Mode** to **Automation**.
@@ -43,11 +38,6 @@ Two of these map to features you'd notice if they were missing: `files:read` let
 Bot events: `message.channels`, `message.groups`, `message.im`, and `app_mention`.
 
 The daemon only acts on messages in the configured channel, even though the app can read direct messages.
-
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="images/access-dark.png">
-  <img alt="Messages from you or any other member of the configured channel reach your sessions as if you typed them. Messages from bots, other channels, and direct messages are ignored." src="images/access-light.png">
-</picture>
 
 ## Troubleshooting
 
